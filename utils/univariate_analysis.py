@@ -21,7 +21,7 @@ def univariate_analysis(df, class_label, features_to_ignore, output_dir = None, 
             continue
         else:
             try:    
-                X = sm.add_constant(df[feature])  # adding a constant
+                X = sm.add_constant(df[feature].replace([-np.inf, np.inf], np.nan).dropna())  # adding a constant
                 y = df[class_label]
 
                 model = sm.Logit(y, X)

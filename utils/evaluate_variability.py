@@ -118,15 +118,15 @@ def draw_roc_train_validation(preprocessed_data_list, summary_list, class_label,
     mean_tpr_train[0] = 0.0
     mean_tpr_train[-1] = 1.0
     std_tpr_train = np.std(interp_tpr_train, axis=0)
-    tprs_upper_train = np.minimum(mean_tpr_train + 1.96 * std_tpr_train, 1)
-    tprs_lower_train = np.maximum(mean_tpr_train - 1.96 * std_tpr_train, 0)
-    roc_auc_train_lower = np.mean(roc_auc_train_list) - 1.96 * np.std(roc_auc_train_list)
-    roc_auc_train_upper = np.mean(roc_auc_train_list) + 1.96 * np.std(roc_auc_train_list)
+    tprs_upper_train = np.minimum(mean_tpr_train + std_tpr_train, 1)
+    tprs_lower_train = np.maximum(mean_tpr_train - std_tpr_train, 0)
+    # tprs_upper_train = np.minimum(mean_tpr_train + 1.96 * std_tpr_train / np.sqrt(len(roc_auc_train_list)), 1)
+    # tprs_lower_train = np.maximum(mean_tpr_train - 1.96 * std_tpr_train / np.sqrt(len(roc_auc_train_list)), 0)
     # tprs_lower_train, tprs_upper_train = compute_bounds_bootstrap(interp_tpr_train, 1000)
     # tprs_upper_train = np.minimum(tprs_upper_train, 1)
     # tprs_lower_train = np.maximum(tprs_lower_train, 0)
-    # # Compute bound of AUC in train
-    # roc_auc_train_lower, roc_auc_train_upper = compute_bounds_bootstrap(np.array(roc_auc_train_list), 1000)
+    # Compute bound of AUC in train
+    roc_auc_train_lower, roc_auc_train_upper = compute_bounds_bootstrap(np.array(roc_auc_train_list), 1000)
 
     # Interpolate all fpr_test_list and tpr_test_list to 100 points
     mean_fpr_test = np.linspace(0, 1, 100)
@@ -137,32 +137,72 @@ def draw_roc_train_validation(preprocessed_data_list, summary_list, class_label,
     mean_tpr_test[0] = 0.0
     mean_tpr_test[-1] = 1.0
     std_tpr_test = np.std(interp_tpr_test, axis=0)
-    tprs_upper_test = np.minimum(mean_tpr_test + 1.96 * std_tpr_test, 1)
-    tprs_lower_test = np.maximum(mean_tpr_test - 1.96 * std_tpr_test, 0)
-    roc_auc_test_lower = np.mean(roc_auc_test_list) - 1.96 * np.std(roc_auc_test_list)
-    roc_auc_test_upper = np.mean(roc_auc_test_list) + 1.96 * np.std(roc_auc_test_list)
+    tprs_upper_test = np.minimum(mean_tpr_test + std_tpr_test, 1)
+    tprs_lower_test = np.maximum(mean_tpr_test - std_tpr_test, 0)
+    # tprs_upper_test = np.minimum(mean_tpr_test + 1.96 * std_tpr_test / np.sqrt(len(roc_auc_test_list)), 1)
+    # tprs_lower_test = np.maximum(mean_tpr_test - 1.96 * std_tpr_test / np.sqrt(len(roc_auc_test_list)), 0)
     # tprs_lower_test, tprs_upper_test = compute_bounds_bootstrap(interp_tpr_test, 1000)
     # tprs_upper_test = np.minimum(tprs_upper_test, 1)
     # tprs_lower_test = np.maximum(tprs_lower_test, 0)
-    # # Compute bound of AUC in test
-    # roc_auc_test_lower, roc_auc_test_upper = compute_bounds_bootstrap(np.array(roc_auc_test_list), 1000)
+    # Compute bound of AUC in test
+    roc_auc_test_lower, roc_auc_test_upper = compute_bounds_bootstrap(np.array(roc_auc_test_list), 1000)
+
+    # # plot a histogram of the AUC values
+    # plt.figure(figsize=(5, 5), dpi = 100)
+    # plt.rcParams.update({'font.size': 14})
+    # plt.hist(roc_auc_train_list, bins=10, alpha=0.5, label='Train')
+    # plt.hist(roc_auc_test_list, bins=10, alpha=0.5, label='Test')
+    # plt.legend(loc='upper right')
+    # plt.title('Histogram of AUC values')
+    # plt.xlabel('AUC')
+    # plt.ylabel('Frequency')
+    # plt.show()
 
     # Plot the ROC curve
     plt.figure(figsize=(5, 5), dpi = 100)
     plt.rcParams.update({'font.size': 14})
-    plt.plot(mean_fpr_train, mean_tpr_train, color="b", lw=2, label=f"Train ROC (AUC = {np.mean(roc_auc_train_list):.2f} (95% CI {roc_auc_train_lower:.2f} - {roc_auc_train_upper:.2f})")
+    # plt.plot(mean_fpr_train, mean_tpr_train, color="b", lw=2, label=f"Train ROC (AUC = {np.mean(roc_auc_train_list):.2f} [95%CI {np.mean(roc_auc_train_list) - 1.96 * np.std(roc_auc_train_list) / np.sqrt(len(roc_auc_train_list)):.2f}-{np.mean(roc_auc_train_list) + 1.96 * np.std(roc_auc_train_list) / np.sqrt(len(roc_auc_train_list)):.2f}])")
+    plt.plot(mean_fpr_train, mean_tpr_train, color="b", lw=2, label=f"Train ROC (AUC = {np.mean(roc_auc_train_list):.2f} (95%CI {roc_auc_train_lower:.2f}-{roc_auc_train_upper:.2f})")
     plt.fill_between(mean_fpr_train, tprs_lower_train, tprs_upper_train, color="b", alpha=0.2)
-    plt.plot(mean_fpr_test, mean_tpr_test, color="r", lw=2,  label=f"Test ROC (AUC = {np.mean(roc_auc_test_list):.2f} (95% CI {roc_auc_test_lower:.2f} - {roc_auc_test_upper:.2f})")
+    # plt.plot(mean_fpr_test, mean_tpr_test, color="r", lw=2,  label=f"Test ROC (AUC = {np.mean(roc_auc_test_list):.2f} [95%CI {np.mean(roc_auc_test_list) - 1.96 * np.std(roc_auc_test_list) / np.sqrt(len(roc_auc_test_list)):.2f}-{np.mean(roc_auc_test_list) + 1.96 * np.std(roc_auc_test_list) / np.sqrt(len(roc_auc_test_list)):.2f}])")
+    plt.plot(mean_fpr_test, mean_tpr_test, color="r", lw=2,  label=f"Test ROC (AUC = {np.mean(roc_auc_test_list):.2f} (95%CI {roc_auc_test_lower:.2f}-{roc_auc_test_upper:.2f})")
     plt.fill_between(mean_fpr_test, tprs_lower_test, tprs_upper_test, color="r", alpha=0.2)
     plt.plot([0, 1], [0, 1], color="k", linestyle="--")
     plt.xlim([0.0, 1.0])
     plt.ylim([0.0, 1.05])
     plt.xlabel("False Positive Rate")
     plt.ylabel("True Positive Rate")
-    plt.title(f"ROC curve for {class_label} classification")
+    plt.title("ROC curve for DTFA classification")
     plt.legend(loc="lower right")
     if output_dir is not None:
-        plt.savefig(f"{output_dir}/roc_curve.png", bbox_inches='tight', dpi=1200)
+        plt.savefig(f"{output_dir}/roc_curve.jpeg", bbox_inches='tight', dpi=1200)
+
+    # Compute optimal threshold by maximizing the Youden's index
+    optimal_idx_test = np.argmax(mean_tpr_test - mean_fpr_test)
+    optimal_tpr_test = mean_tpr_test[optimal_idx_test]
+    optimal_fpr_test = mean_fpr_test[optimal_idx_test]
+    optimal_sensitivity_test = optimal_tpr_test
+    optimal_specificity_test = 1 - optimal_fpr_test
+
+    results = {
+        "mean_fpr": list(mean_fpr_test),
+        "mean_tpr": list(mean_tpr_test),
+        "std_tpr": list(std_tpr_test),
+        "mean_auc": np.mean(roc_auc_train_list),
+        "std_auc": np.std(roc_auc_train_list),
+        "tprs_upper": list(tprs_upper_test),
+        "tprs_lower": list(tprs_lower_test),
+        "optimal_tpr": optimal_tpr_test,
+        "optimal_fpr": optimal_fpr_test,
+        "optimal_sensitivity": optimal_sensitivity_test,
+        "optimal_specificity": optimal_specificity_test
+    }
+
+    # Save results to a file
+    import json
+    if output_dir is not None:
+        with open(f"{output_dir}/roc_results.json", "w") as f:
+            json.dump(results, f, indent=4)
 
     # Interpolate all precision_train_list and recall_train_list to 100 points
     mean_recall_train = np.linspace(0, 1, 100)
@@ -175,15 +215,8 @@ def draw_roc_train_validation(preprocessed_data_list, summary_list, class_label,
     mean_precision_train[0] = 0.0
     mean_precision_train[-1] = 1.0
     std_precision_train = np.std(interp_precision_train, axis=0)
-    precisions_upper_train = np.minimum(mean_precision_train + 1.96 * std_precision_train, 1)
-    precisions_lower_train = np.maximum(mean_precision_train - 1.96 * std_precision_train, 0)
-    pr_auc_train_lower = np.mean(pr_auc_train_list) - 1.96 * np.std(pr_auc_train_list)
-    pr_auc_train_upper = np.mean(pr_auc_train_list) + 1.96 * np.std(pr_auc_train_list)
-    # precisions_lower_train, precisions_upper_train = compute_bounds_bootstrap(interp_precision_train, 1000)
-    # precisions_upper_train = np.minimum(precisions_upper_train, 1)
-    # precisions_lower_train = np.maximum(precisions_lower_train, 0)
-    # # Compute bound of AUC in train
-    # pr_auc_train_lower, pr_auc_train_upper = compute_bounds_bootstrap(np.array(pr_auc_train_list), 1000)
+    precisions_upper_train = np.minimum(mean_precision_train + std_precision_train, 1)
+    precisions_lower_train = np.maximum(mean_precision_train - std_precision_train, 0)
     
     # Interpolate all precision_test_list and recall_test_list to 100 points
     mean_recall_test = np.linspace(0, 1, 100)
@@ -196,28 +229,21 @@ def draw_roc_train_validation(preprocessed_data_list, summary_list, class_label,
     mean_precision_test[0] = 0.0
     mean_precision_test[-1] = 1.0
     std_precision_test = np.std(interp_precision_test, axis=0)
-    precisions_upper_test = np.minimum(mean_precision_test + 1.96 * std_precision_test, 1)
-    precisions_lower_test = np.maximum(mean_precision_test - 1.96 * std_precision_test, 0)
-    pr_auc_test_lower = np.mean(pr_auc_test_list) - 1.96 * np.std(pr_auc_test_list)
-    pr_auc_test_upper = np.mean(pr_auc_test_list) + 1.96 * np.std(pr_auc_test_list)
-    # precisions_lower_test, precisions_upper_test = compute_bounds_bootstrap(interp_precision_test, 1000)
-    # precisions_upper_test = np.minimum(precisions_upper_test, 1)
-    # precisions_lower_test = np.maximum(precisions_lower_test, 0)
-    # # Compute bound of AUC in test
-    # pr_auc_test_lower, pr_auc_test_upper = compute_bounds_bootstrap(np.array(pr_auc_test_list), 1000)
+    precisions_upper_test = np.minimum(mean_precision_test + std_precision_test, 1)
+    precisions_lower_test = np.maximum(mean_precision_test - std_precision_test, 0)
 
     # Plot PR curve
     plt.figure(figsize=(5, 5), dpi = 100)
     plt.rcParams.update({'font.size': 14})
-    plt.plot(mean_recall_train, mean_precision_train, color="b", lw=2, label=f"Train PR (AUC = {np.mean(pr_auc_train_list):.2f} (95% CI {pr_auc_train_lower:.2f} - {pr_auc_train_upper:.2f})")
+    plt.plot(mean_recall_train, mean_precision_train, color="b", lw=2, label=f"Train PR (AUC = {np.mean(pr_auc_train_list):.2f} [95%CI {np.mean(pr_auc_train_list) - 1.96 * np.std(pr_auc_train_list) / np.sqrt(len(pr_auc_train_list)):.2f}-{np.mean(pr_auc_train_list) + 1.96 * np.std(pr_auc_train_list) / np.sqrt(len(pr_auc_train_list)):.2f}])")
     plt.fill_between(mean_recall_train, precisions_lower_train, precisions_upper_train, color="b", alpha=0.2)
-    plt.plot(mean_recall_test, mean_precision_test, color="r", lw=2,  label=f"Test PR (AUC = {np.mean(pr_auc_test_list):.2f} (95% CI {pr_auc_test_lower:.2f} - {pr_auc_test_upper:.2f})")
+    plt.plot(mean_recall_test, mean_precision_test, color="r", lw=2,  label=f"Test PR (AUC = {np.mean(pr_auc_test_list):.2f} [95%CI {np.mean(pr_auc_test_list) - 1.96 * np.std(pr_auc_test_list) / np.sqrt(len(pr_auc_test_list)):.2f}-{np.mean(pr_auc_test_list) + 1.96 * np.std(pr_auc_test_list) / np.sqrt(len(pr_auc_test_list)):.2f}])")
     plt.fill_between(mean_recall_test, precisions_lower_test, precisions_upper_test, color="r", alpha=0.2)
     plt.xlim([0.0, 1.0])
     plt.ylim([0.0, 1.05])
     plt.xlabel("Recall")
     plt.ylabel("Precision")
-    plt.title(f"PR curve for {class_label} classification")
+    plt.title("PR curve for DTFA classification")
     plt.legend(loc="upper right")
     if output_dir is not None:
         plt.savefig(f"{output_dir}/pr_curve.png", bbox_inches='tight', dpi=1200)
@@ -248,18 +274,18 @@ def draw_roc_train_validation(preprocessed_data_list, summary_list, class_label,
     mean_matthews_corrcoef = np.mean(matthews_corrcoef_list)
     std_matthews_corrcoef = np.std(matthews_corrcoef_list)
 
-    print("Weighted precision: {:.2f} ± {:.2f}".format(mean_weighted_precision, std_weighted_precision))
-    print("Weighted recall: {:.2f} ± {:.2f}".format(mean_weighted_recall, std_weighted_recall))
-    print("Weighted F1-score: {:.2f} ± {:.2f}".format(mean_weighted_f1_score, std_weighted_f1_score))
-    print("Sensitivity: {:.2f} ± {:.2f}".format(mean_senstivity, std_senstivity))
-    print("Specificity: {:.2f} ± {:.2f}".format(mean_specificity, std_specificity))
-    print("F1-score: {:.2f} ± {:.2f}".format(mean_f1_score, std_f1_score))
-    print("FPR: {:.2f} ± {:.2f}".format(mean_fpr, std_fpr))
-    print("FNR: {:.2f} ± {:.2f}".format(mean_fnr, std_fnr))
-    print("NPV: {:.2f} ± {:.2f}".format(mean_npv, std_npv))
-    print("PPV: {:.2f} ± {:.2f}".format(mean_ppv, std_ppv))
-    print("Cohen's kappa: {:.2f} ± {:.2f}".format(mean_cohens_kappa, std_cohens_kappa))
-    print("Matthews correlation coefficient: {:.2f} ± {:.2f}".format(mean_matthews_corrcoef, std_matthews_corrcoef))
+    print("Weighted precision (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_weighted_precision, mean_weighted_precision - 1.96 * std_weighted_precision / np.sqrt(len(weighted_precision_list)), mean_weighted_precision + 1.96 * std_weighted_precision / np.sqrt(len(weighted_precision_list))))
+    print("Weighted recall (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_weighted_recall, mean_weighted_recall - 1.96 * std_weighted_recall / np.sqrt(len(weighted_recall_list)), mean_weighted_recall + 1.96 * std_weighted_recall / np.sqrt(len(weighted_recall_list))))
+    print("Weighted F1-score (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_weighted_f1_score, mean_weighted_f1_score - 1.96 * std_weighted_f1_score / np.sqrt(len(weighted_f1_score_list)), mean_weighted_f1_score + 1.96 * std_weighted_f1_score / np.sqrt(len(weighted_f1_score_list))))
+    print("Sensitivity (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_senstivity, mean_senstivity - 1.96 * std_senstivity / np.sqrt(len(senstivity_list)), mean_senstivity + 1.96 * std_senstivity / np.sqrt(len(senstivity_list))))
+    print("Specificity (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_specificity, mean_specificity - 1.96 * std_specificity / np.sqrt(len(specificity_list)), mean_specificity + 1.96 * std_specificity / np.sqrt(len(specificity_list))))
+    print("F1-score (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_f1_score, mean_f1_score - 1.96 * std_f1_score / np.sqrt(len(f1_score_list)), mean_f1_score + 1.96 * std_f1_score / np.sqrt(len(f1_score_list))))
+    print("FPR (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_fpr, mean_fpr - 1.96 * std_fpr / np.sqrt(len(fpr_list)), mean_fpr + 1.96 * std_fpr / np.sqrt(len(fpr_list))))
+    print("FNR (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_fnr, mean_fnr - 1.96 * std_fnr / np.sqrt(len(fnr_list)), mean_fnr + 1.96 * std_fnr / np.sqrt(len(fnr_list))))
+    print("NPV (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_npv, mean_npv - 1.96 * std_npv / np.sqrt(len(npv_list)), mean_npv + 1.96 * std_npv / np.sqrt(len(npv_list))))
+    print("PPV (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_ppv, mean_ppv - 1.96 * std_ppv / np.sqrt(len(ppv_list)), mean_ppv + 1.96 * std_ppv / np.sqrt(len(ppv_list))))
+    print("Cohen's kappa (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_cohens_kappa, mean_cohens_kappa - 1.96 * std_cohens_kappa / np.sqrt(len(cohens_kappa_list)), mean_cohens_kappa + 1.96 * std_cohens_kappa / np.sqrt(len(cohens_kappa_list))))
+    print("Matthews correlation coefficient (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_matthews_corrcoef, mean_matthews_corrcoef - 1.96 * std_matthews_corrcoef / np.sqrt(len(matthews_corrcoef_list)), mean_matthews_corrcoef + 1.96 * std_matthews_corrcoef / np.sqrt(len(matthews_corrcoef_list))))
 
     # Plot average confusion matrix
     cm_mean = np.mean(np.array(cm_list), axis=0).astype(int)

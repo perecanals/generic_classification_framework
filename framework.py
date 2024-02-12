@@ -690,8 +690,6 @@ class GenericClassificationFramework():
                 aux_df.insert(0, "Model", [self.model_name])
                 self.fine_tuning_df = pd.concat([self.fine_tuning_df, aux_df], ignore_index=True)
 
-            print(self.fine_tuning_df)
-
         # Display sorted results by "Test ROC"[mean]
         # display(self.fine_tuning_df.sort_values(by = ("Test ROC", "mean"), ascending = False).head(10))
         print(self.fine_tuning_df.sort_values(by = ("Test ROC", "mean"), ascending = False).head(10))
