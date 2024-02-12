@@ -232,19 +232,93 @@ def draw_roc_train_validation(preprocessed_data_list, summary_list, class_label,
     precisions_upper_test = np.minimum(mean_precision_test + std_precision_test, 1)
     precisions_lower_test = np.maximum(mean_precision_test - std_precision_test, 0)
 
+    # Plot the ROC curve
+    plt.figure(figsize=(5, 5), dpi = 100)
+    plt.rcParams.update({'font.size': 14})
+    # plt.plot(mean_fpr_train, mean_tpr_train, color="b", lw=2, label=f"Train ROC (AUC = {np.mean(roc_auc_train_list):.2f} [95%CI {np.mean(roc_auc_train_list) - 1.96 * np.std(roc_auc_train_list) / np.sqrt(len(roc_auc_train_list)):.2f}-{np.mean(roc_auc_train_list) + 1.96 * np.std(roc_auc_train_list) / np.sqrt(len(roc_auc_train_list)):.2f}])")
+    plt.plot(mean_fpr_train, mean_tpr_train, color="mediumblue", lw=1.25, label=f"Train ROC (AUC = {np.mean(roc_auc_train_list):.2f} (95%CI {roc_auc_train_lower:.2f}-{roc_auc_train_upper:.2f})", alpha=0.5)
+    plt.fill_between(mean_fpr_train, tprs_lower_train, tprs_upper_train, color="mediumblue", alpha=0.1)
+    # plt.plot(mean_fpr_test, mean_tpr_test, color="r", lw=2,  label=f"Test ROC (AUC = {np.mean(roc_auc_test_list):.2f} [95%CI {np.mean(roc_auc_test_list) - 1.96 * np.std(roc_auc_test_list) / np.sqrt(len(roc_auc_test_list)):.2f}-{np.mean(roc_auc_test_list) + 1.96 * np.std(roc_auc_test_list) / np.sqrt(len(roc_auc_test_list)):.2f}])")
+    plt.plot(mean_fpr_test, mean_tpr_test, color="crimson", lw=1.25,  label=f"Test ROC (AUC = {np.mean(roc_auc_test_list):.2f} (95%CI {roc_auc_test_lower:.2f}-{roc_auc_test_upper:.2f})")
+    plt.fill_between(mean_fpr_test, tprs_lower_test, tprs_upper_test, color="crimson", alpha=0.2)
+    plt.plot([0, 1], [0, 1], color="k", linestyle="--")
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title("ROC curve for DTFA classification")
+    plt.legend(fonstsize = 10)
+    if output_dir is not None:
+        plt.savefig(f"{output_dir}/roc_curve.jpeg", bbox_inches='tight', dpi=1200)
+
+    # Compute optimal threshold by maximizing the Youden's index
+    optimal_idx_test = np.argmax(mean_tpr_test - mean_fpr_test)
+    optimal_tpr_test = mean_tpr_test[optimal_idx_test]
+    optimal_fpr_test = mean_fpr_test[optimal_idx_test]
+    optimal_sensitivity_test = optimal_tpr_test
+    optimal_specificity_test = 1 - optimal_fpr_test
+
+    results = {
+        "mean_fpr": list(mean_fpr_test),
+        "mean_tpr": list(mean_tpr_test),
+        "std_tpr": list(std_tpr_test),
+        "mean_auc": np.mean(roc_auc_train_list),
+        "std_auc": np.std(roc_auc_train_list),
+        "tprs_upper": list(tprs_upper_test),
+        "tprs_lower": list(tprs_lower_test),
+        "optimal_tpr": optimal_tpr_test,
+        "optimal_fpr": optimal_fpr_test,
+        "optimal_sensitivity": optimal_sensitivity_test,
+        "optimal_specificity": optimal_specificity_test
+    }
+
+    # Save results to a file
+    import json
+    if output_dir is not None:
+        with open(f"{output_dir}/roc_results.json", "w") as f:
+            json.dump(results, f, indent=4)
+
+    # Interpolate all precision_train_list and recall_train_list to 100 points
+    mean_recall_train = np.linspace(0, 1, 100)
+    interp_precision_train = np.ndarray([len(summary_list), len(mean_recall_train)])
+    for idx in range(len(precision_train_list)):
+        interp_precision_train[idx] = interp(mean_recall_train, np.flip(recall_train_list[idx]), np.flip(precision_train_list[idx]))
+    mean_recall_train  = np.flip(mean_recall_train)
+    interp_precision_train = np.flip(interp_precision_train, axis=1)
+    mean_precision_train = np.mean(interp_precision_train, axis=0)
+    mean_precision_train[0] = 0.0
+    mean_precision_train[-1] = 1.0
+    std_precision_train = np.std(interp_precision_train, axis=0)
+    precisions_upper_train = np.minimum(mean_precision_train + std_precision_train, 1)
+    precisions_lower_train = np.maximum(mean_precision_train - std_precision_train, 0)
+    
+    # Interpolate all precision_test_list and recall_test_list to 100 points
+    mean_recall_test = np.linspace(0, 1, 100)
+    interp_precision_test = np.ndarray([len(summary_list), len(mean_recall_test)])
+    for idx in range(len(precision_test_list)):
+        interp_precision_test[idx] = interp(mean_recall_test, np.flip(recall_test_list[idx]), np.flip(precision_test_list[idx]))
+    mean_recall_test  = np.flip(mean_recall_test)
+    interp_precision_test = np.flip(interp_precision_test, axis=1)
+    mean_precision_test = np.mean(interp_precision_test, axis=0)
+    mean_precision_test[0] = 0.0
+    mean_precision_test[-1] = 1.0
+    std_precision_test = np.std(interp_precision_test, axis=0)
+    precisions_upper_test = np.minimum(mean_precision_test + std_precision_test, 1)
+    precisions_lower_test = np.maximum(mean_precision_test - std_precision_test, 0)
+
     # Plot PR curve
     plt.figure(figsize=(5, 5), dpi = 100)
     plt.rcParams.update({'font.size': 14})
-    plt.plot(mean_recall_train, mean_precision_train, color="b", lw=2, label=f"Train PR (AUC = {np.mean(pr_auc_train_list):.2f} [95%CI {np.mean(pr_auc_train_list) - 1.96 * np.std(pr_auc_train_list) / np.sqrt(len(pr_auc_train_list)):.2f}-{np.mean(pr_auc_train_list) + 1.96 * np.std(pr_auc_train_list) / np.sqrt(len(pr_auc_train_list)):.2f}])")
-    plt.fill_between(mean_recall_train, precisions_lower_train, precisions_upper_train, color="b", alpha=0.2)
-    plt.plot(mean_recall_test, mean_precision_test, color="r", lw=2,  label=f"Test PR (AUC = {np.mean(pr_auc_test_list):.2f} [95%CI {np.mean(pr_auc_test_list) - 1.96 * np.std(pr_auc_test_list) / np.sqrt(len(pr_auc_test_list)):.2f}-{np.mean(pr_auc_test_list) + 1.96 * np.std(pr_auc_test_list) / np.sqrt(len(pr_auc_test_list)):.2f}])")
+    plt.plot(mean_recall_train, mean_precision_train, color="mediumblue", lw=1.25, label=f"Train PR (AUC = {np.mean(pr_auc_train_list):.2f} [95%CI {np.mean(pr_auc_train_list) - 1.96 * np.std(pr_auc_train_list) / np.sqrt(len(pr_auc_train_list)):.2f}-{np.mean(pr_auc_train_list) + 1.96 * np.std(pr_auc_train_list) / np.sqrt(len(pr_auc_train_list)):.2f}])", alpha = 0.5)
+    plt.fill_between(mean_recall_train, precisions_lower_train, precisions_upper_train, color="mediumblue", alpha=0.1)
+    plt.plot(mean_recall_test, mean_precision_test, color="crimson", lw=1.25, label=f"Test PR (AUC = {np.mean(pr_auc_test_list):.2f} [95%CI {np.mean(pr_auc_test_list) - 1.96 * np.std(pr_auc_test_list) / np.sqrt(len(pr_auc_test_list)):.2f}-{np.mean(pr_auc_test_list) + 1.96 * np.std(pr_auc_test_list) / np.sqrt(len(pr_auc_test_list)):.2f}])")
     plt.fill_between(mean_recall_test, precisions_lower_test, precisions_upper_test, color="r", alpha=0.2)
     plt.xlim([0.0, 1.0])
     plt.ylim([0.0, 1.05])
     plt.xlabel("Recall")
     plt.ylabel("Precision")
     plt.title("PR curve for DTFA classification")
-    plt.legend(loc="upper right")
+    plt.legend(fontsize=10)
     if output_dir is not None:
         plt.savefig(f"{output_dir}/pr_curve.png", bbox_inches='tight', dpi=1200)
 
