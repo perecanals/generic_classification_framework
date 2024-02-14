@@ -21,7 +21,7 @@ def univariate_analysis(df, class_label, features_to_ignore, output_dir = None, 
             continue
         else:
             try:    
-                X = sm.add_constant(df[feature].replace([-np.inf, np.inf], np.nan).dropna())  # adding a constant
+                X = sm.add_constant(df[feature].replace([np.inf, -np.inf], np.nan).dropna())  # adding a constant
                 y = df[class_label]
 
                 model = sm.Logit(y, X)
@@ -104,7 +104,7 @@ def univariate_analysis(df, class_label, features_to_ignore, output_dir = None, 
         os.makedirs(output_dir + f"/univariate_analysis", exist_ok=True)
         plt.savefig(output_dir + f"/univariate_analysis/univariate_analysis_{class_label}.jpeg")
         # Save or_df
-        or_df.to_csv(output_dir + f"/univariate_analysis/univariate_analysis_{class_label}.csv", index=False)
+        or_df.to_csv(output_dir + f"/univariate_analysis/univariate_analysis_{class_label}.xlsx", index=False)
 
     if show_plot:
         plt.show()

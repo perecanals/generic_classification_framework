@@ -115,7 +115,7 @@ def evaluate_model(model_name, results_summary, plot=True, output_dir=None, verb
     f1_scores_train = 2 * (precision_train * recall_train) / (precision_train + recall_train)
     # Substitute nans for 0
     f1_scores_train = np.nan_to_num(f1_scores_train)
-    optimal_threshold_train = thresholds_train[np.argmax(f1_scores_train)]
+    optimal_threshold_train = thresholds_train[np.argmax(tpr_train - fpr_train)]
     results_summary['optimal_threshold_train'] = optimal_threshold_train
     # Compute class predictions and weighted f1 score with optimal threshold
     y_train_pred = np.where(probs_train >= optimal_threshold_train, 1, 0)
@@ -132,10 +132,19 @@ def evaluate_model(model_name, results_summary, plot=True, output_dir=None, verb
 
     # Compute non-weighted f1 score to determine optimal threshold
     precision_test, recall_test, thresholds_test = precision_recall_curve(results_summary["y_test"], probs_test)
+    precision_test[0] = 1
+    precision_test[-1] = 0
+    recall_test[0] = 0
+    recall_test[-1] = 1
     f1_scores_test = 2 * (precision_test * recall_test) / (precision_test + recall_test)
+    f15_scores_test = (1 + 1.5 ** 2) * (precision_test * recall_test) / (1.5 ** 2 * precision_test + recall_test)
+    f05_scores_test = (1 + 0.5 ** 2) * (precision_test * recall_test) / (0.5 ** 2 * precision_test + recall_test)
     # Substitute nans for 0
     f1_scores_test = np.nan_to_num(f1_scores_test)
-    optimal_threshold_test = thresholds_test[np.argmax(f1_scores_test)]
+    optimal_threshold_test = thresholds_test[np.argmax(tpr_test - fpr_test)] # Optimize for youden's index
+    # optimal_threshold_test = thresholds_test[np.argmax(f1_scores_test)] # Optimize for f1 score
+    # optimal_threshold_test = thresholds_test[np.argmax(f15_scores_test)] # Optimize for f1.5 score
+    # optimal_threshold_test = thresholds_test[np.argmax(f05_scores_test)] # Optimize for f0.5 score
     results_summary['optimal_threshold_test'] = optimal_threshold_test
     # Compute class predictions and weighted f1 score with optimal threshold (test)
     y_test_pred = np.where(probs_test >= optimal_threshold_test, 1, 0)

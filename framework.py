@@ -5,11 +5,12 @@ import itertools
 import pandas as pd
 import numpy as np
 
-from utils.train_validation_splitting import split_data
-from utils.preprocessing import preprocess_data
-from utils.univariate_analysis import univariate_analysis
-from utils.classification_utils import build_classifier, evaluate_model
-from utils.evaluate_variability import draw_roc_train_validation
+from generic_classification_framework.utils.train_validation_splitting import split_data
+from generic_classification_framework.utils.preprocessing import preprocess_data
+from generic_classification_framework.utils.univariate_analysis import univariate_analysis
+from generic_classification_framework.utils.classification_utils import build_classifier, evaluate_model
+from generic_classification_framework.utils.evaluate_variability import evaluate_classification_model 
+from generic_classification_framework.utils.feature_importance import rfe_plot, plot_feature_importances
 
 class GenericClassificationFramework():
     """
@@ -105,6 +106,7 @@ class GenericClassificationFramework():
 
         # Evaluation
         self.results = {}
+        self.results_cv = None
 
         # Variability assessment
         self.variability_df = None
@@ -112,7 +114,6 @@ class GenericClassificationFramework():
 
         # Feature selection
         self.selected_features = None
-        self.feature_rankings = None
 
         # Outlier assessment
         self.outlier_df = None
@@ -255,9 +256,9 @@ class GenericClassificationFramework():
         assert self.original_df is not None, "Please, load a dataframe using the load_data method"
         assert self.class_label is not None, "Please, set a class_label using the set_class_label method"
 
-        if os.path.exists(self.output_dir + f"/univariate_analysis/univariate_analysis_{self.class_label}.csv"):
+        if os.path.exists(self.output_dir + f"/univariate_analysis/univariate_analysis_{self.class_label}.xlsx"):
             print("Loading univariate analysis results from disk...")
-            self.or_df = pd.read_csv(self.output_dir + f"/univariate_analysis/univariate_analysis_{self.class_label}.csv")
+            self.or_df = pd.read_csv(self.output_dir + f"/univariate_analysis/univariate_analysis_{self.class_label}.xlsx")
             self.significant_features_from_univariate = self.or_df[self.or_df["p-value"] < 0.1]["Feature"].tolist()
         else:
             print("Performing univariate analysis...")
@@ -504,6 +505,8 @@ class GenericClassificationFramework():
                                         make_plots = make_plots,
                                         calibrate = calibrate,
                                         verbose = verbose)
+                
+        self.results_cv = evaluate_classification_model(self.preprocessed_data_list, list(self.results.values()), self.class_label, plot=False, verbose=False)
 
     def assess_variability_cv(self):
         """
@@ -547,7 +550,11 @@ class GenericClassificationFramework():
         #     display(self.variability_results)
 
         os.makedirs(self.output_dir + f"/aggregated_test_size{self.test_size}/{self.model_name}", exist_ok = True)
-        draw_roc_train_validation(self.preprocessed_data_list, list(self.results.values()), self.class_label, self.output_dir + f"/aggregated_test_size{self.test_size}/{self.model_name}")
+        evaluate_classification_model(preprocessed_data_list=self.preprocessed_data_list, 
+                                      summary_list=list(self.results.values()), 
+                                      class_label=self.class_label, 
+                                      plot=True,
+                                      output_dir=self.output_dir + f"/aggregated_test_size{self.test_size}/{self.model_name}")
 
     def perform_rfe_cv(self, 
                        n_features_to_select: int = 100, 
@@ -610,6 +617,185 @@ class GenericClassificationFramework():
 
         self.selected_features = selected_features
         self.feature_rankings = average_rankings
+
+    def perform_rfe_cv_gain(self, 
+                            n_features_to_select: int = 10, 
+                            step = 0.1, 
+                            n_arms = 2,
+                            n_splits_rfe: int = 10, 
+                            initial_features: list = None,
+                            make_performance_plot: bool = False,
+                            n_features_fine_analysis: int = 1,
+                            select_best=True):
+        """
+        Perform recursive feature elimination (RFE) across multiple data splits and eliminate features
+        that are consistently ranked as least important in all splits.
+
+        Parameters
+        ----------
+        n_features_to_select : int
+            Number of features to select.
+        step : float
+            Fraction of features to eliminate at each step.
+        n_splits_rfe : int
+            Number of splits to perform RFE on.
+        initial_features : list
+            List of initial features to start the RFE with.
+        make_performance_plot : bool
+            Whether to make a performance plot with the selected features.
+        n_features_fine_analysis : int
+            Number of features to perform a fine analysis on. If set to 1 (or less), 
+            no fine analysis will be made.
+        select_best : bool
+            Whether to select the best features based on the fine analysis.
+
+        """
+        assert len(self.train_df_list) >= (n_arms * n_splits_rfe), "Not enough data splits available."
+
+        if initial_features is None:
+            initial_features = [feature for feature in self.preprocessed_data_list[0]["X_train"].columns]
+
+        selected_features = initial_features
+
+        if isinstance(n_features_to_select, float):
+            n_features_to_select *= len(initial_features)
+            n_features_to_select = int(n_features_to_select)
+
+        iteration = 0
+
+        feature_ranking_dict = {}
+
+        original_n_splits = self.n_splits
+
+        if make_performance_plot:
+            rfe_df = pd.DataFrame(columns = ["Iteration", "N_features", "Train ROC", "Train ROC (std)", "Test ROC", "Test ROC (std)"])
+            self.n_splits = min(10, self.n_splits)
+            # Evaluate performance with all features
+            self.build_classifier(model = self.model, params = self.params, random_seed_initialization = self.random_seed_initialization, verbose = False)
+            self.fit_classifiers_cv(features_to_include=selected_features, verbose = False)
+            self.evaluate_classifiers_cv(make_plots = False, force_evaluation = True, verbose = False)
+            rfe_line = pd.DataFrame({"Iteration": [iteration], 
+                                    "N_features": [len(selected_features)], 
+                                    "Train ROC": [self.results_cv["train_mean_roc_auc"]], 
+                                    "Train ROC (std)": [self.results_cv["train_std_roc_auc"]],
+                                    "Test ROC": [self.results_cv["test_mean_roc_auc"]],
+                                    "Test ROC (std)": [self.results_cv["test_std_roc_auc"]],
+                                    "Features": [selected_features]}, index = [0])
+            rfe_df = pd.concat([rfe_df, rfe_line], ignore_index = True)
+            
+
+        while len(selected_features) > n_features_to_select:
+            print(f"Iteration {iteration}: {len(selected_features)} features remaining")
+            feature_ranking_dict[iteration] = {}
+            for arm in range(n_arms):
+                print("Arm", arm, "of", n_arms)
+                feature_ranking_dict[iteration][arm] = {}
+                feature_ranking_dict[iteration][arm]["feature_importances"] = np.ndarray([n_splits_rfe, len(selected_features)])
+                feature_ranking_dict[iteration][arm]["feature_names"] = np.array(selected_features)
+                for split in range(n_splits_rfe):
+                    print("\tSplit:", split)
+                    X_train = self.preprocessed_data_list[arm * n_splits_rfe + split]["X_train"]
+                    y_train = self.preprocessed_data_list[arm * n_splits_rfe + split]["y_train"]
+                    # Initialize RFE with the given estimator and parameters
+                    estimator, _ = build_classifier(self.model, self.params, self.random_seed_initialization)
+                    # Fit classifier with current feature list
+                    estimator.fit(X_train[selected_features], y_train)
+                    # Store feature importances
+                    feature_ranking_dict[iteration][arm]["feature_importances"][split, :] = estimator.feature_importances_
+                # Compute mean feature importances
+                feature_ranking_dict[iteration][arm]["mean_feature_importances"] = np.mean(feature_ranking_dict[iteration][arm]["feature_importances"], axis = 0)
+                # Sort features by mean feature importances
+                feature_ranking_dict[iteration][arm]["sorted_feature_names"] = feature_ranking_dict[iteration][arm]["feature_names"][np.argsort(feature_ranking_dict[iteration][arm]["mean_feature_importances"])]
+
+            # Define step as either the number of features to eliminate or a fraction of the remaining features
+            if isinstance(step, float):
+                step = int(step * len(selected_features))
+
+            if len(selected_features) <= n_features_fine_analysis:
+                # Set a step of 1
+                step = 1
+            else:
+                # Set a minimum step of 2
+                step = max(step, 2) 
+
+            # Set a maximum step of the remaining features (depending on the difference between the remaining 
+            # features and the number of features to select)
+            if len(selected_features) - step < n_features_to_select:
+                step = len(selected_features) - n_features_to_select
+
+            # Get coincidences between last step features
+            coincidences = []
+            for arm in range(n_arms):
+                coincidences.append(feature_ranking_dict[iteration][arm]["sorted_feature_names"][:step])
+            coincidences = np.concatenate(coincidences)
+            coincidences, counts = np.unique(coincidences, return_counts=True)
+
+            # Get features to eliminate
+            features_to_eliminate = coincidences[counts == n_arms]
+
+            # Set a maximum nmber of features to eliminate (not to pass the n_features_to_select limit)
+            if len(selected_features) - len(features_to_eliminate) <= n_features_to_select:
+                coincidences[:len(selected_features) - n_features_to_select]
+            
+            if len(features_to_eliminate) == 0:
+                # print("No coincidences found, Stopping RFE at iteration", iteration)
+                # break
+                # Get sorted feature importance values
+                mean_feature_importances = np.ndarray([len(selected_features), n_arms])
+                for arm in range(n_arms):
+                    mean_feature_importances[:, arm] = feature_ranking_dict[iteration][arm]["mean_feature_importances"]
+                mean_feature_importances = np.mean(mean_feature_importances, axis = 1)
+                # Sort feature importances
+                sorted_feature_importances = np.argsort(mean_feature_importances)
+                # Get least important feature to eliminate
+                features_to_eliminate = feature_ranking_dict[iteration][arm]["feature_names"][sorted_feature_importances[:1]]
+
+            print("Features to eliminate:", features_to_eliminate)
+
+            # Evaluate performance with all features
+            self.build_classifier(model = self.model, params = self.params, random_seed_initialization = self.random_seed_initialization, verbose = False)
+            self.fit_classifiers_cv(features_to_include=selected_features, verbose = False)
+            self.evaluate_classifiers_cv(make_plots = False, force_evaluation = True, verbose = False)
+            rfe_line = pd.DataFrame({"Iteration": [iteration], 
+                                    "N_features": [len(selected_features)], 
+                                    "Train ROC": [self.results_cv["train_mean_roc_auc"]], 
+                                    "Train ROC (std)": [self.results_cv["train_std_roc_auc"]],
+                                    "Test ROC": [self.results_cv["test_mean_roc_auc"]],
+                                    "Test ROC (std)": [self.results_cv["test_std_roc_auc"]],
+                                    "Features": [selected_features]}, index = [0])
+            rfe_df = pd.concat([rfe_df, rfe_line], ignore_index = True)
+            if make_performance_plot:
+                # Make plot with training and test ROC
+                os.makedirs(self.output_dir + "/rfe", exist_ok = True)
+                rfe_plot(rfe_df, self.output_dir + "/rfe")
+
+            # Eliminate features
+            selected_features = [feature for feature in selected_features if feature not in features_to_eliminate]
+            iteration += 1
+
+        print("Reached the desired number of features in", iteration, "iterations")
+        print("Final number of features:", len(selected_features))
+        print("Selected features:", selected_features)
+
+        self.selected_features = selected_features
+
+        if make_performance_plot:
+            # Make plot with training and Test ROC
+            rfe_plot(rfe_df)
+
+            self.n_splits = original_n_splits
+        
+        if select_best:
+            print("Selecting feature set with best performance")
+            # Select best feature set (Get features from iteration with maximum Test ROC)
+            best_iteration = rfe_df[rfe_df["Test ROC"] == rfe_df["Test ROC"].max()]
+            print("Best iteration:", best_iteration["Iteration"].values[0])
+            print("Test ROC:", best_iteration["Test ROC"].values[0])
+            print("Features:", best_iteration["Features"].values[0])
+            self.selected_features = best_iteration["Features"].values[0]
+
+    def make_feature_importance_plot(self):
+        plot_feature_importances(self.classifiers, self.features_to_include, self.output_dir)
 
     def outlier_assessment(self):
         """
