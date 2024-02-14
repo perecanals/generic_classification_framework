@@ -637,6 +637,8 @@ class GenericClassificationFramework():
             Number of features to select.
         step : float
             Fraction of features to eliminate at each step.
+        n_arms : int
+            Number of arms to use for the rfe algorithm.
         n_splits_rfe : int
             Number of splits to perform RFE on.
         initial_features : list
