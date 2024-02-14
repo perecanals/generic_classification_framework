@@ -37,6 +37,10 @@ def evaluate_classification_model(preprocessed_data_list, summary_list, class_la
     ppv_list = []
     cohens_kappa_list = []
     matthews_corrcoef_list = []
+    likelihood_ratio_list_minus = []
+    likelihood_ratio_list_plus = []
+    sensitivity_0 = 0
+    specificity_1 = 0
 
     results = {}
 
@@ -86,6 +90,14 @@ def evaluate_classification_model(preprocessed_data_list, summary_list, class_la
         ppv_list.append(tp / (tp + fp))
         cohens_kappa_list.append(cohen_kappa_score(y_test, y_test_pred))
         matthews_corrcoef_list.append(matthews_corrcoef(y_test, y_test_pred))
+        if senstivity_list[-1] == 0:
+            sensitivity_0 += 1
+        else:
+            likelihood_ratio_list_minus.append((1 - specificity_list[-1]) / senstivity_list[-1])
+        if specificity_list[-1] == 1:
+            specificity_1 += 1
+        else:
+            likelihood_ratio_list_plus.append(senstivity_list[-1] / (1 - specificity_list[-1]))
 
     def compute_bounds_bootstrap(values, n_bootstrap_samples):
         lower_bounds = []
@@ -184,6 +196,22 @@ def evaluate_classification_model(preprocessed_data_list, summary_list, class_la
     precisions_upper_test = np.minimum(mean_precision_test + std_precision_test, 1)
     precisions_lower_test = np.maximum(mean_precision_test - std_precision_test, 0)
 
+    # Pass all nans/infs to 0
+    weighted_precision_list = np.nan_to_num(weighted_precision_list)
+    weighted_recall_list = np.nan_to_num(weighted_recall_list)
+    weighted_f1_score_list = np.nan_to_num(weighted_f1_score_list)
+    senstivity_list = np.nan_to_num(senstivity_list)
+    specificity_list = np.nan_to_num(specificity_list)
+    f1_score_list = np.nan_to_num(f1_score_list)
+    fpr_list = np.nan_to_num(fpr_list)
+    fnr_list = np.nan_to_num(fnr_list)
+    npv_list = np.nan_to_num(npv_list)
+    ppv_list = np.nan_to_num(ppv_list)
+    cohens_kappa_list = np.nan_to_num(cohens_kappa_list)
+    matthews_corrcoef_list = np.nan_to_num(matthews_corrcoef_list)
+    likelihood_ratio_list_minus = np.nan_to_num(likelihood_ratio_list_minus)
+    likelihood_ratio_list_plus = np.nan_to_num(likelihood_ratio_list_plus)
+
     # Compute mean and std of all metrics
     mean_weighted_precision = np.mean(weighted_precision_list)
     std_weighted_precision = np.std(weighted_precision_list)
@@ -209,6 +237,10 @@ def evaluate_classification_model(preprocessed_data_list, summary_list, class_la
     std_cohens_kappa = np.std(cohens_kappa_list)
     mean_matthews_corrcoef = np.mean(matthews_corrcoef_list)
     std_matthews_corrcoef = np.std(matthews_corrcoef_list)
+    mean_likelihood_ratio_minus = np.mean(likelihood_ratio_list_minus)
+    std_likelihood_ratio_minus = np.std(likelihood_ratio_list_minus)
+    mean_likelihood_ratio_plus = np.mean(likelihood_ratio_list_plus)
+    std_likelihood_ratio_plus = np.std(likelihood_ratio_list_plus)
 
     if verbose:
         print("Weighted precision (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_weighted_precision, mean_weighted_precision - 1.96 * std_weighted_precision / np.sqrt(len(weighted_precision_list)), mean_weighted_precision + 1.96 * std_weighted_precision / np.sqrt(len(weighted_precision_list))))
@@ -221,8 +253,13 @@ def evaluate_classification_model(preprocessed_data_list, summary_list, class_la
         print("FNR (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_fnr, mean_fnr - 1.96 * std_fnr / np.sqrt(len(fnr_list)), mean_fnr + 1.96 * std_fnr / np.sqrt(len(fnr_list))))
         print("NPV (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_npv, mean_npv - 1.96 * std_npv / np.sqrt(len(npv_list)), mean_npv + 1.96 * std_npv / np.sqrt(len(npv_list))))
         print("PPV (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_ppv, mean_ppv - 1.96 * std_ppv / np.sqrt(len(ppv_list)), mean_ppv + 1.96 * std_ppv / np.sqrt(len(ppv_list))))
+        print("MCC (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_matthews_corrcoef, mean_matthews_corrcoef - 1.96 * std_matthews_corrcoef / np.sqrt(len(matthews_corrcoef_list)), mean_matthews_corrcoef + 1.96 * std_matthews_corrcoef / np.sqrt(len(matthews_corrcoef_list))))
+        print("LR(-) (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_likelihood_ratio_minus, mean_likelihood_ratio_minus - 1.96 * std_likelihood_ratio_minus / np.sqrt(len(likelihood_ratio_list_minus)), mean_likelihood_ratio_minus + 1.96 * std_likelihood_ratio_minus / np.sqrt(len(likelihood_ratio_list_minus))))
+        print("1/LR(-) (95%CI): {:.2f} ({:.2f}-{:.2f})".format(1 / mean_likelihood_ratio_minus, 1 / (mean_likelihood_ratio_minus - 1.96 * std_likelihood_ratio_minus / np.sqrt(len(likelihood_ratio_list_minus))), 1 / (mean_likelihood_ratio_minus + 1.96 * std_likelihood_ratio_minus / np.sqrt(len(likelihood_ratio_list_minus)))))
+        print("  Percentage of folds with sensitivity = 0: {:.2f}%".format(sensitivity_0 / len(senstivity_list) * 100))
+        print("Likelihood ratio (+) (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_likelihood_ratio_plus, mean_likelihood_ratio_plus - 1.96 * std_likelihood_ratio_plus / np.sqrt(len(likelihood_ratio_list_plus)), mean_likelihood_ratio_plus + 1.96 * std_likelihood_ratio_plus / np.sqrt(len(likelihood_ratio_list_plus))))
+        print("  Percentage of folds with specificity = 1: {:.2f}%".format(specificity_1 / len(specificity_list) * 100))
         print("Cohen's kappa (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_cohens_kappa, mean_cohens_kappa - 1.96 * std_cohens_kappa / np.sqrt(len(cohens_kappa_list)), mean_cohens_kappa + 1.96 * std_cohens_kappa / np.sqrt(len(cohens_kappa_list))))
-        print("Matthews correlation coefficient (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_matthews_corrcoef, mean_matthews_corrcoef - 1.96 * std_matthews_corrcoef / np.sqrt(len(matthews_corrcoef_list)), mean_matthews_corrcoef + 1.96 * std_matthews_corrcoef / np.sqrt(len(matthews_corrcoef_list))))
 
     # Plot average confusion matrix
     cm_mean = np.mean(np.array(cm_list), axis=0).astype(int)
