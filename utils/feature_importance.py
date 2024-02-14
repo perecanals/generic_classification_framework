@@ -21,10 +21,31 @@ def rfe_plot(rfe_df, output_dir=None):
         - "Test ROC (std)": the standard deviation of the train score
 
     """
+    # Convert columns to numeric if they are not already
+    rfe_df["N_features"] = pd.to_numeric(rfe_df["N_features"], errors='coerce')
+    rfe_df["Train ROC"] = pd.to_numeric(rfe_df["Train ROC"], errors='coerce')
+    rfe_df["Train ROC (std)"] = pd.to_numeric(rfe_df["Train ROC (std)"], errors='coerce')
+    rfe_df["Test ROC"] = pd.to_numeric(rfe_df["Test ROC"], errors='coerce')
+    rfe_df["Test ROC (std)"] = pd.to_numeric(rfe_df["Test ROC (std)"], errors='coerce')
     _, ax = plt.subplots(figsize=(7, 5), dpi=1000)
     ax.grid(lw=0.5, alpha=0.5)
-    ax.errorbar(rfe_df["N_features"], rfe_df["Train ROC"], yerr=rfe_df["Train ROC (std)"], fmt='-o', label="Train ROC", color = "mediumblue", lw = 1.25)
-    ax.errorbar(rfe_df["N_features"], rfe_df["Test ROC"], yerr=rfe_df["Test ROC (std)"], fmt='-o', label="Test ROC", color = "crimson")
+    if len(rfe_df) == 1:
+        ax.errorbar(rfe_df["N_features"], rfe_df["Train ROC"], yerr=rfe_df["Train ROC (std)"], fmt='-o', label="Train ROC", color = "mediumblue", lw=1, markersize=3)
+        ax.errorbar(rfe_df["N_features"], rfe_df["Test ROC"], yerr=rfe_df["Test ROC (std)"], fmt='-o', label="Val ROC", color = "crimson", lw=1, markersize=3)
+    else:
+        # Plotting Train ROC
+        ax.plot(rfe_df["N_features"], rfe_df["Train ROC"], '-o', label="Train ROC", color="mediumblue", lw=1, alpha=0.8, markersize=3)
+        ax.fill_between(rfe_df["N_features"], 
+                        rfe_df["Train ROC"] - rfe_df["Train ROC (std)"], 
+                        rfe_df["Train ROC"] + rfe_df["Train ROC (std)"], 
+                        color="mediumblue", alpha=0.2)
+
+        # Plotting Test/Validation ROC
+        ax.plot(rfe_df["N_features"], rfe_df["Test ROC"], '-o', label="Val ROC", color="crimson", lw=1, alpha=0.8, markersize=3)
+        ax.fill_between(rfe_df["N_features"], 
+                        rfe_df["Test ROC"] - rfe_df["Test ROC (std)"], 
+                        rfe_df["Test ROC"] + rfe_df["Test ROC (std)"], 
+                        color="crimson", alpha=0.2)
     ax.invert_xaxis()
     ax.set_xlabel("Number of features")
     ax.set_ylabel("ROC AUC")
