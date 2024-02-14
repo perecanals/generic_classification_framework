@@ -99,6 +99,7 @@ class GenericClassificationFramework():
         # Classifier
         self.model = None
         self.params = None
+        self.model_name = None
         self.random_seed_initialization = None
         self.classifiers = []
         self.features_to_include = []
@@ -141,6 +142,22 @@ class GenericClassificationFramework():
 
     def set_class_label(self, class_label: str):
         self.class_label = class_label
+
+    def get_model_name(self):
+
+        model_name = self.model + "-"
+        for key, value in self.params.items():
+            # If value is float, round to 2 decimal
+            if isinstance(value, float):
+                model_name += key + "_" + f"{value:.2f}" + "-"
+            else:
+                model_name += key + "_" + str(value) + "-"
+        if self.oversampling is not None:
+            model_name += "oversampling_" + self.oversampling + "-"
+
+        self.model_name = model_name[:-1]
+
+        return self.model_name
 
     def split_data_train_test(self, 
                               test_size: float = 0.3, 
@@ -299,18 +316,6 @@ class GenericClassificationFramework():
             Whether to print information about the classifier.
 
         """
-        def get_model_name(model_name, params, oversampling = None):
-            model_name = model_name + "-"
-            for key, value in params.items():
-                # If value is float, round to 2 decimal
-                if isinstance(value, float):
-                    model_name += key + "_" + f"{value:.2f}" + "-"
-                else:
-                    model_name += key + "_" + str(value) + "-"
-            if oversampling is not None:
-                model_name += "oversampling_" + oversampling + "-"
-            return model_name[:-1]
-        
         self.model = model
         self.params = params
         self.random_seed_initialization = random_seed_initialization
@@ -328,7 +333,7 @@ class GenericClassificationFramework():
                 self.is_fitted.append(False)
 
             self.params = params
-            self.model_name = get_model_name(self.model, self.params, self.oversampling)
+            self.get_model_name()
             os.makedirs(self.output_dir + f"/folds/{split}/{self.model_name}", exist_ok = True)
 
     def fit_classififer(self,
@@ -387,6 +392,7 @@ class GenericClassificationFramework():
     def fit_classifiers_cv(self,
                            features_to_include: list = None,
                         #    exclude_cv_features: bool = False,
+                           force = True,
                            verbose: bool = True):
         """
         Wrapper for the fit_classifier method. Fits the classifier to the training data from all splits
@@ -401,10 +407,13 @@ class GenericClassificationFramework():
 
         """
         for split in range(self.n_splits):
-            self.fit_classififer(features_to_include = features_to_include,
-                                 split = split,
-                                #  exclude_cv_features = exclude_cv_features,
-                                 verbose = verbose)
+            if os.path.join(self.output_dir, "folds", str(split), self.get_model_name(), "results.pkl") and not force:
+                print("Loading results from: ", self.output_dir, "folds", str(split), self.get_model_name(), "results.pkl")
+            else:
+                self.fit_classififer(features_to_include = features_to_include,
+                                    split = split,
+                                    #  exclude_cv_features = exclude_cv_features,
+                                    verbose = verbose)
             if verbose:
                 print(f"Classifier fitted for split {split}")
 
@@ -508,7 +517,8 @@ class GenericClassificationFramework():
                 
         self.results_cv = evaluate_classification_model(self.preprocessed_data_list, list(self.results.values()), self.class_label, plot=False, verbose=False)
 
-    def assess_variability_cv(self):
+    def assess_variability_cv(self, 
+                              force: bool =False):
         """
         Method to assess variability of the classification results across the different splits of the cross-validation.
 
@@ -520,7 +530,7 @@ class GenericClassificationFramework():
         self.variability_df = pd.DataFrame(columns=["Random seed (splitting)", "Train ROC", "Test ROC", "Train F1-score", "Test F1-score", "Test F1-score (train)"])
 
         for split in range(self.n_splits):
-            if split not in self.results and os.path.exists(self.output_dir + f"/folds/{split}/{self.model_name}/results.pkl"):
+            if (split not in self.results and os.path.exists(self.output_dir + f"/folds/{split}/{self.model_name}/results.pkl")) or force:
                 print("Loading results from: ", self.output_dir + f"/folds/{split}/{self.model_name}/results.pkl")
                 with open(self.output_dir + f"/folds/{split}/{self.model_name}/results.pkl", "rb") as f:
                     self.results[split] = pickle.load(f)
@@ -752,7 +762,7 @@ class GenericClassificationFramework():
                 # Get least important feature to eliminate
                 features_to_eliminate = feature_ranking_dict[iteration][arm]["feature_names"][sorted_feature_importances[:1]]
 
-            print("Features to eliminate:", features_to_eliminate)
+            print("Features to eliminate ({} features):".format(len(features_to_eliminate)), features_to_eliminate)
 
             # Evaluate performance with all features
             self.build_classifier(model = self.model, params = self.params, random_seed_initialization = self.random_seed_initialization, verbose = False)
@@ -791,7 +801,7 @@ class GenericClassificationFramework():
             print("Selecting feature set with best performance")
             # Select best feature set (Get features from iteration with maximum Test ROC)
             best_iteration = rfe_df[rfe_df["Test ROC"] == rfe_df["Test ROC"].max()]
-            print("Best iteration:", best_iteration["Iteration"].values[0])
+            print("Best iteration ({} features):".format(best_iteration["N_features"].values[0]), best_iteration["Iteration"].values[0])
             print("Test ROC:", best_iteration["Test ROC"].values[0])
             print("Features:", best_iteration["Features"].values[0])
             self.selected_features = best_iteration["Features"].values[0]
@@ -864,10 +874,13 @@ class GenericClassificationFramework():
                                   random_seed_initialization=self.random_seed_initialization, 
                                   verbose = False)
             
-            print(f"Computing cross-validation for model {self.model_name} ({1 + idx}/{len(all_param_combinations)})")
-            self.fit_classifiers_cv(features_to_include=self.features_to_include, verbose = False)
-            self.evaluate_classifiers_cv(make_plots = False, verbose = False)
-            self.assess_variability_cv()
+            if not os.path.exists(self.output_dir + f"/folds/{str(0)}/{self.model_name}/results.pkl"): 
+                print(f"Computing cross-validation for model {self.model_name} ({1 + idx}/{len(all_param_combinations)})")
+                self.fit_classifiers_cv(features_to_include=self.features_to_include, force=True, verbose=False)
+                self.evaluate_classifiers_cv(make_plots = False, verbose = False)
+            else:
+                print(f"Loading cross-validation for model {self.model_name} ({1 + idx}/{len(all_param_combinations)})")
+            self.assess_variability_cv(force=True)
 
             if self.fine_tuning_df is None:
                 self.fine_tuning_df = self.variability_results.copy()
@@ -877,7 +890,6 @@ class GenericClassificationFramework():
                 aux_df = self.variability_results.copy()
                 aux_df.insert(0, "Model", [self.model_name])
                 self.fine_tuning_df = pd.concat([self.fine_tuning_df, aux_df], ignore_index=True)
-
         # Display sorted results by "Test ROC"[mean]
         # display(self.fine_tuning_df.sort_values(by = ("Test ROC", "mean"), ascending = False).head(10))
         print(self.fine_tuning_df.sort_values(by = ("Test ROC", "mean"), ascending = False).head(10))
