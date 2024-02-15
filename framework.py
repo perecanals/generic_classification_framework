@@ -77,9 +77,8 @@ class GenericClassificationFramework():
         # Feature groups (to be adapted for a specific task)
         self.class_labels = []
         self.info_columns = [self.id_label] + self.class_labels
-        # Add list of features groups if needed
-        # Ex:
-        # self.cv_features = ["AGE", "SEX", ...]
+        # Add dict of feature groups if needed
+        self.feature_groups = {}
 
         # Train/test split parameters
         self.random_seed_split = random_seed_split
@@ -143,8 +142,14 @@ class GenericClassificationFramework():
     def set_class_label(self, class_label: str):
         self.class_label = class_label
 
-    def get_model_name(self):
+    def set_class_labels(self, class_labels: list):
+        self.class_labels = class_labels
+        self.info_columns = [self.id_label] + self.class_labels
 
+    def set_feature_groups(self, feature_groups: dict):
+        self.feature_groups = feature_groups
+
+    def get_model_name(self):
         model_name = self.model + "-"
         for key, value in self.params.items():
             # If value is float, round to 2 decimal
@@ -339,7 +344,7 @@ class GenericClassificationFramework():
     def fit_classififer(self,
                         features_to_include: list = None,
                         split: int = 0,
-                        # exclude_cv_features: bool = False,# Add if needed
+                        exclude_feature_groups: list = [],
                         verbose: bool = False):
         """
         Fits the classifier to the training data from the specified split. It uses the features_to_include
@@ -354,6 +359,9 @@ class GenericClassificationFramework():
             List of features to include in the classifier.
         split : int
             Split to fit the classifier to.
+        exclude_feature_groups : list
+            List of feature groups to exclude from the classifier. Elements
+            should be the keys (strings) of the feature_groups attribute.
         verbose : bool
             Whether to print information about the fitting.
         """
@@ -367,8 +375,11 @@ class GenericClassificationFramework():
         if features_to_include is None:
             features_to_include = [feature for feature in self.original_df.columns if feature not in self.info_columns]
 
-        # if exclude_cv_features:
-        #     features_to_include = [feature for feature in features_to_include if feature not in self.cv_features]
+        for feature_group in exclude_feature_groups:
+            if feature_group in self.feature_groups:
+                features_to_include = [feature for feature in features_to_include if feature not in self.feature_groups[feature_group]]
+            else:
+                print(f"Feature group {feature_group} not found.")
 
         self.features_to_include = features_to_include
 

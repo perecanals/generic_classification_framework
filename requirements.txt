@@ -1,0 +1,10 @@
+imblearn==0.0
+matplotlib==3.3.4
+numpy==1.24.1
+pandas==1.5.2
+scikit_learn==0.24.1
+seaborn==0.13.2
+setuptools==60.10.0
+setuptools==60.5.0
+statsmodels==0.14.1
+xgboost==1.7.5
