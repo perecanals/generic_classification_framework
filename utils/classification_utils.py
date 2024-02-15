@@ -14,7 +14,7 @@ from sklearn.metrics import roc_curve, auc, precision_recall_curve, f1_score
 
 def build_classifier(model_name, params, random_seed, verbose = False):
 
-    assert model_name in ["LogisticRegression", "XGBRFClassifier", "XGBClassifier", "RidgeClassifier", "RandomForestClassifier", "SVC"], "model_name must be either LogisticRegression, XGBRFClassifier, XGBClassifier, RidgeClassifier, SVC or RandomForestClassifier"
+    assert model_name in ["LogisticRegression", "XGBRFClassifier", "XGBRFRegressor", "XGBClassifier", "RidgeClassifier", "RandomForestClassifier", "SVC"], "model_name must be either LogisticRegression, XGBRFClassifier, XGBRFRegressor, XGBClassifier, RidgeClassifier, SVC or RandomForestClassifier"
 
     if model_name == "LogisticRegression":
         if params is None:
@@ -35,6 +35,15 @@ def build_classifier(model_name, params, random_seed, verbose = False):
                 "subsample": 0.2,
             }
         classifier = xgb.XGBRFClassifier(**params)
+    elif model_name == "XGBRFRegressor":
+        if params is None:
+            params = {
+                "n_estimators": 200,
+                "max_depth": 1,
+                "random_state": random_seed,
+                "subsample": 0.2,
+            }
+        classifier = xgb.XGBRFRegressor(**params)
     elif model_name == "XGBClassifier":
         if params is None:
             params = {
