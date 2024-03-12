@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 sns.set(style="whitegrid")
 
-def rfe_plot(rfe_df, output_dir=None):
+def rfe_plot(rfe_df, n_splits_rfe, output_dir=None):
     """
     Makes recursive feature elimination (RFE) plot. This plot will show the evolution of the AUC as a 
     function of the number of features.
@@ -27,30 +27,32 @@ def rfe_plot(rfe_df, output_dir=None):
     rfe_df["Train ROC (std)"] = pd.to_numeric(rfe_df["Train ROC (std)"], errors='coerce')
     rfe_df["Test ROC"] = pd.to_numeric(rfe_df["Test ROC"], errors='coerce')
     rfe_df["Test ROC (std)"] = pd.to_numeric(rfe_df["Test ROC (std)"], errors='coerce')
-    _, ax = plt.subplots(figsize=(7, 5), dpi=1000)
+    _, ax = plt.subplots(figsize=(12, 3), dpi=1000)
     ax.grid(lw=0.5, alpha=0.5)
     if len(rfe_df) == 1:
-        ax.errorbar(rfe_df["N_features"], rfe_df["Train ROC"], yerr=rfe_df["Train ROC (std)"], fmt='-o', label="Train ROC", color = "mediumblue", lw=1, markersize=3)
-        ax.errorbar(rfe_df["N_features"], rfe_df["Test ROC"], yerr=rfe_df["Test ROC (std)"], fmt='-o', label="Val ROC", color = "crimson", lw=1, markersize=3)
+        ax.errorbar(rfe_df["N_features"], rfe_df["Train ROC"], yerr=1.96 * rfe_df["Train ROC (std)"] / np.sqrt(n_splits_rfe), fmt='-o', label="Train AUROC", color = "mediumblue", lw=1, markersize=3, alpha=0.8)
+        ax.errorbar(rfe_df["N_features"], rfe_df["Test ROC"], yerr=1.96 * rfe_df["Test ROC (std)"] / np.sqrt(n_splits_rfe), fmt='-o', label="Val AUROC", color = "crimson", lw=1, markersize=3, alpha=0.8)
     else:
+        # ax.errorbar(rfe_df["N_features"], rfe_df["Train ROC"], yerr=1.96 * rfe_df["Train ROC (std)"] / np.sqrt(n_splits_rfe), fmt='-o', label="Train ROC", color = "mediumblue", lw=1, markersize=3, alpha=0.8)
+        # ax.errorbar(rfe_df["N_features"], rfe_df["Test ROC"], yerr=1.96 * rfe_df["Test ROC (std)"] / np.sqrt(n_splits_rfe), fmt='-o', label="Val ROC", color = "crimson", lw=1, markersize=3, alpha=0.8)
         # Plotting Train ROC
-        ax.plot(rfe_df["N_features"], rfe_df["Train ROC"], '-o', label="Train ROC", color="mediumblue", lw=1, alpha=0.8, markersize=3)
+        ax.plot(rfe_df["N_features"], rfe_df["Train ROC"], '-o', label="Train AUROC", color="mediumblue", lw=1, alpha=0.8, markersize=3)
         ax.fill_between(rfe_df["N_features"], 
-                        rfe_df["Train ROC"] - rfe_df["Train ROC (std)"], 
-                        rfe_df["Train ROC"] + rfe_df["Train ROC (std)"], 
-                        color="mediumblue", alpha=0.2)
+                        rfe_df["Train ROC"] - 1.96 * rfe_df["Train ROC (std)"] / np.sqrt(n_splits_rfe), 
+                        rfe_df["Train ROC"] + 1.96 * rfe_df["Train ROC (std)"] / np.sqrt(n_splits_rfe), 
+                        color="mediumblue", alpha=0.1)
 
         # Plotting Test/Validation ROC
-        ax.plot(rfe_df["N_features"], rfe_df["Test ROC"], '-o', label="Val ROC", color="crimson", lw=1, alpha=0.8, markersize=3)
+        ax.plot(rfe_df["N_features"], rfe_df["Test ROC"], '-o', label="Val AUROC", color="crimson", lw=1, alpha=0.8, markersize=3)
         ax.fill_between(rfe_df["N_features"], 
-                        rfe_df["Test ROC"] - rfe_df["Test ROC (std)"], 
-                        rfe_df["Test ROC"] + rfe_df["Test ROC (std)"], 
-                        color="crimson", alpha=0.2)
+                        rfe_df["Test ROC"] - 1.96 * rfe_df["Test ROC (std)"] / np.sqrt(n_splits_rfe), 
+                        rfe_df["Test ROC"] + 1.96 * rfe_df["Test ROC (std)"] / np.sqrt(n_splits_rfe), 
+                        color="crimson", alpha=0.1)
     ax.invert_xaxis()
     ax.set_xlabel("Number of features")
-    ax.set_ylabel("ROC AUC")
-    ax.set_title("RFE plot")
-    ax.legend()
+    ax.set_ylabel("AUROC")
+    # ax.set_title("RFE plot")
+    ax.legend(loc="lower left")
     if output_dir is not None:
         plt.savefig(f"{output_dir}/rfe_plot.jpeg", bbox_inches='tight', dpi=1200)
         plt.close()
@@ -58,13 +60,17 @@ def rfe_plot(rfe_df, output_dir=None):
         plt.show()
 
 def plot_feature_importances(models, features, output_dir=None):
-    feature_importances = np.ndarray([len(features), len(models)])
+    feature_importances = np.ndarray([len(features), len(models), len(models[0])])
 
     for idx, model in enumerate(models):
-        try:
-            feature_importances[:, idx] = model.feature_importances_
-        except:
-            feature_importances[:, idx] = model.estimator.feature_importances_
+        for idx_, model_ in enumerate(model):
+            try:
+                feature_importances[:, idx, idx_] = model_.feature_importances_
+            except:
+                feature_importances[:, idx, idx_] = model_.estimator.feature_importances_
+
+    # Compute the mean across the last axis (ensemble axis)
+    feature_importances = np.mean(feature_importances, axis=-1)
 
     mean_feature_importances = np.mean(feature_importances, axis = 1)
     std_feature_importances = np.std(feature_importances, axis = 1)

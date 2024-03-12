@@ -8,6 +8,9 @@ sns.set(style="whitegrid")
 
 from sklearn.metrics import *
 
+import warnings
+warnings.filterwarnings("ignore")
+
 def evaluate_classification_model(preprocessed_data_list, summary_list, class_label, plot=True, output_dir=None, verbose = True):
     fpr_train_list = []
     tpr_train_list = []
@@ -25,10 +28,12 @@ def evaluate_classification_model(preprocessed_data_list, summary_list, class_la
 
     cm_list = []
 
+    optimal_threshold_list = []
+
     weighted_precision_list = []
     weighted_recall_list = []
     weighted_f1_score_list = []
-    senstivity_list = []
+    sensitivity_list = []
     specificity_list = []
     f1_score_list = []
     fpr_list = []
@@ -45,11 +50,15 @@ def evaluate_classification_model(preprocessed_data_list, summary_list, class_la
     results = {}
 
     for idx, summary in enumerate(summary_list):
-
         preprocessed_data = preprocessed_data_list[idx]
 
-        y_train = preprocessed_data["y_train"]
-        y_test = preprocessed_data["y_test"]
+        if "y_class_train" in preprocessed_data:
+            y_train = preprocessed_data["y_class_train"]
+            y_test = preprocessed_data["y_class_test"]
+        else:
+            y_train = preprocessed_data["y_train"]
+            y_test = preprocessed_data["y_test"]
+
         y_test_pred = summary["y_test_pred"]
 
         fpr_train_list.append(summary["fpr_train"])
@@ -78,10 +87,12 @@ def evaluate_classification_model(preprocessed_data_list, summary_list, class_la
         cm_list.append(cm)
         tn, fp, fn, tp = cm.ravel()
 
+        optimal_threshold_list.append(summary["optimal_threshold_test"])
+
         weighted_precision_list.append(precision_score(y_test, y_test_pred, average = "weighted"))
         weighted_recall_list.append(recall_score(y_test, y_test_pred, average = "weighted"))
         weighted_f1_score_list.append(f1_score(y_test, y_test_pred, average = "weighted"))
-        senstivity_list.append(tp / (tp + fn))
+        sensitivity_list.append(tp / (tp + fn))
         specificity_list.append(tn / (tn + fp))
         f1_score_list.append(2 * tp / (2 * tp + fp + fn))
         fpr_list.append(fp / (fp + tn))
@@ -90,14 +101,14 @@ def evaluate_classification_model(preprocessed_data_list, summary_list, class_la
         ppv_list.append(tp / (tp + fp))
         cohens_kappa_list.append(cohen_kappa_score(y_test, y_test_pred))
         matthews_corrcoef_list.append(matthews_corrcoef(y_test, y_test_pred))
-        if senstivity_list[-1] == 0:
+        if sensitivity_list[-1] == 0:
             sensitivity_0 += 1
         else:
-            likelihood_ratio_list_minus.append((1 - specificity_list[-1]) / senstivity_list[-1])
+            likelihood_ratio_list_minus.append((1 - specificity_list[-1]) / sensitivity_list[-1])
         if specificity_list[-1] == 1:
             specificity_1 += 1
         else:
-            likelihood_ratio_list_plus.append(senstivity_list[-1] / (1 - specificity_list[-1]))
+            likelihood_ratio_list_plus.append(sensitivity_list[-1] / (1 - specificity_list[-1]))
 
     def compute_bounds_bootstrap(values, n_bootstrap_samples):
         lower_bounds = []
@@ -132,8 +143,8 @@ def evaluate_classification_model(preprocessed_data_list, summary_list, class_la
     mean_tpr_train[0] = 0.0
     mean_tpr_train[-1] = 1.0
     std_tpr_train = np.std(interp_tpr_train, axis=0)
-    tprs_upper_train = np.minimum(mean_tpr_train + std_tpr_train, 1)
-    tprs_lower_train = np.maximum(mean_tpr_train - std_tpr_train, 0)
+    tprs_upper_train = np.minimum(mean_tpr_train + 1.96 * std_tpr_train / np.sqrt(len(summary_list)), 1)
+    tprs_lower_train = np.maximum(mean_tpr_train - 1.96 * std_tpr_train / np.sqrt(len(summary_list)), 0)
     # tprs_upper_train = np.minimum(mean_tpr_train + 1.96 * std_tpr_train / np.sqrt(len(roc_auc_train_list)), 1)
     # tprs_lower_train = np.maximum(mean_tpr_train - 1.96 * std_tpr_train / np.sqrt(len(roc_auc_train_list)), 0)
     # tprs_lower_train, tprs_upper_train = compute_bounds_bootstrap(interp_tpr_train, 1000)
@@ -151,8 +162,8 @@ def evaluate_classification_model(preprocessed_data_list, summary_list, class_la
     mean_tpr_test[0] = 0.0
     mean_tpr_test[-1] = 1.0
     std_tpr_test = np.std(interp_tpr_test, axis=0)
-    tprs_upper_test = np.minimum(mean_tpr_test + std_tpr_test, 1)
-    tprs_lower_test = np.maximum(mean_tpr_test - std_tpr_test, 0)
+    tprs_upper_test = np.minimum(mean_tpr_test + 1.96 * std_tpr_test / np.sqrt(len(summary_list)), 1)
+    tprs_lower_test = np.maximum(mean_tpr_test - 1.96 * std_tpr_test / np.sqrt(len(summary_list)), 0)
     # tprs_upper_test = np.minimum(mean_tpr_test + 1.96 * std_tpr_test / np.sqrt(len(roc_auc_test_list)), 1)
     # tprs_lower_test = np.maximum(mean_tpr_test - 1.96 * std_tpr_test / np.sqrt(len(roc_auc_test_list)), 0)
     # tprs_lower_test, tprs_upper_test = compute_bounds_bootstrap(interp_tpr_test, 1000)
@@ -200,7 +211,7 @@ def evaluate_classification_model(preprocessed_data_list, summary_list, class_la
     weighted_precision_list = np.nan_to_num(weighted_precision_list)
     weighted_recall_list = np.nan_to_num(weighted_recall_list)
     weighted_f1_score_list = np.nan_to_num(weighted_f1_score_list)
-    senstivity_list = np.nan_to_num(senstivity_list)
+    sensitivity_list = np.nan_to_num(sensitivity_list)
     specificity_list = np.nan_to_num(specificity_list)
     f1_score_list = np.nan_to_num(f1_score_list)
     fpr_list = np.nan_to_num(fpr_list)
@@ -219,8 +230,8 @@ def evaluate_classification_model(preprocessed_data_list, summary_list, class_la
     std_weighted_recall = np.std(weighted_recall_list)
     mean_weighted_f1_score = np.mean(weighted_f1_score_list)
     std_weighted_f1_score = np.std(weighted_f1_score_list)
-    mean_senstivity = np.mean(senstivity_list)
-    std_senstivity = np.std(senstivity_list)
+    mean_sensitivity = np.mean(sensitivity_list)
+    std_sensitivity = np.std(sensitivity_list)
     mean_specificity = np.mean(specificity_list)
     std_specificity = np.std(specificity_list)
     mean_f1_score = np.mean(f1_score_list)
@@ -243,12 +254,15 @@ def evaluate_classification_model(preprocessed_data_list, summary_list, class_la
     std_likelihood_ratio_plus = np.std(likelihood_ratio_list_plus)
 
     if verbose:
+        print("\nTrain ROC AUC (95%CI): {:.2f} ({:.2f}-{:.2f})".format(np.mean(roc_auc_train_list), np.mean(roc_auc_train_list) - 1.96 * np.std(roc_auc_train_list) / np.sqrt(len(roc_auc_train_list)), np.mean(roc_auc_train_list) + 1.96 * np.std(roc_auc_train_list) / np.sqrt(len(roc_auc_train_list))))
+        print("Test ROC AUC (95%CI): {:.2f} ({:.2f}-{:.2f})".format(np.mean(roc_auc_test_list), np.mean(roc_auc_test_list) - 1.96 * np.std(roc_auc_test_list) / np.sqrt(len(roc_auc_test_list)), np.mean(roc_auc_test_list) + 1.96 * np.std(roc_auc_test_list) / np.sqrt(len(roc_auc_test_list))))
+        print("Optimal threshold: {:.2f} ({:.2f}-{:.2f})".format(np.mean(optimal_threshold_list), np.mean(optimal_threshold_list) - 1.96 * np.std(optimal_threshold_list) / np.sqrt(len(optimal_threshold_list)), np.mean(optimal_threshold_list) + 1.96 * np.std(optimal_threshold_list) / np.sqrt(len(optimal_threshold_list))))
+        print("Sensitivity (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_sensitivity, mean_sensitivity - 1.96 * std_sensitivity / np.sqrt(len(sensitivity_list)), mean_sensitivity + 1.96 * std_sensitivity / np.sqrt(len(sensitivity_list))))
+        print("Specificity (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_specificity, mean_specificity - 1.96 * std_specificity / np.sqrt(len(specificity_list)), mean_specificity + 1.96 * std_specificity / np.sqrt(len(specificity_list))))
+        print("F1-score (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_f1_score, mean_f1_score - 1.96 * std_f1_score / np.sqrt(len(f1_score_list)), mean_f1_score + 1.96 * std_f1_score / np.sqrt(len(f1_score_list))))
         print("Weighted precision (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_weighted_precision, mean_weighted_precision - 1.96 * std_weighted_precision / np.sqrt(len(weighted_precision_list)), mean_weighted_precision + 1.96 * std_weighted_precision / np.sqrt(len(weighted_precision_list))))
         print("Weighted recall (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_weighted_recall, mean_weighted_recall - 1.96 * std_weighted_recall / np.sqrt(len(weighted_recall_list)), mean_weighted_recall + 1.96 * std_weighted_recall / np.sqrt(len(weighted_recall_list))))
         print("Weighted F1-score (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_weighted_f1_score, mean_weighted_f1_score - 1.96 * std_weighted_f1_score / np.sqrt(len(weighted_f1_score_list)), mean_weighted_f1_score + 1.96 * std_weighted_f1_score / np.sqrt(len(weighted_f1_score_list))))
-        print("Sensitivity (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_senstivity, mean_senstivity - 1.96 * std_senstivity / np.sqrt(len(senstivity_list)), mean_senstivity + 1.96 * std_senstivity / np.sqrt(len(senstivity_list))))
-        print("Specificity (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_specificity, mean_specificity - 1.96 * std_specificity / np.sqrt(len(specificity_list)), mean_specificity + 1.96 * std_specificity / np.sqrt(len(specificity_list))))
-        print("F1-score (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_f1_score, mean_f1_score - 1.96 * std_f1_score / np.sqrt(len(f1_score_list)), mean_f1_score + 1.96 * std_f1_score / np.sqrt(len(f1_score_list))))
         print("FPR (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_fpr, mean_fpr - 1.96 * std_fpr / np.sqrt(len(fpr_list)), mean_fpr + 1.96 * std_fpr / np.sqrt(len(fpr_list))))
         print("FNR (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_fnr, mean_fnr - 1.96 * std_fnr / np.sqrt(len(fnr_list)), mean_fnr + 1.96 * std_fnr / np.sqrt(len(fnr_list))))
         print("NPV (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_npv, mean_npv - 1.96 * std_npv / np.sqrt(len(npv_list)), mean_npv + 1.96 * std_npv / np.sqrt(len(npv_list))))
@@ -256,9 +270,11 @@ def evaluate_classification_model(preprocessed_data_list, summary_list, class_la
         print("MCC (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_matthews_corrcoef, mean_matthews_corrcoef - 1.96 * std_matthews_corrcoef / np.sqrt(len(matthews_corrcoef_list)), mean_matthews_corrcoef + 1.96 * std_matthews_corrcoef / np.sqrt(len(matthews_corrcoef_list))))
         print("LR(-) (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_likelihood_ratio_minus, mean_likelihood_ratio_minus - 1.96 * std_likelihood_ratio_minus / np.sqrt(len(likelihood_ratio_list_minus)), mean_likelihood_ratio_minus + 1.96 * std_likelihood_ratio_minus / np.sqrt(len(likelihood_ratio_list_minus))))
         print("1/LR(-) (95%CI): {:.2f} ({:.2f}-{:.2f})".format(1 / mean_likelihood_ratio_minus, 1 / (mean_likelihood_ratio_minus - 1.96 * std_likelihood_ratio_minus / np.sqrt(len(likelihood_ratio_list_minus))), 1 / (mean_likelihood_ratio_minus + 1.96 * std_likelihood_ratio_minus / np.sqrt(len(likelihood_ratio_list_minus)))))
-        print("  Percentage of folds with sensitivity = 0: {:.2f}%".format(sensitivity_0 / len(senstivity_list) * 100))
+        if sensitivity_0 > 0:
+            print("  Percentage of folds with sensitivity = 0: {:.2f}%".format(sensitivity_0 / len(sensitivity_list) * 100))
         print("Likelihood ratio (+) (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_likelihood_ratio_plus, mean_likelihood_ratio_plus - 1.96 * std_likelihood_ratio_plus / np.sqrt(len(likelihood_ratio_list_plus)), mean_likelihood_ratio_plus + 1.96 * std_likelihood_ratio_plus / np.sqrt(len(likelihood_ratio_list_plus))))
-        print("  Percentage of folds with specificity = 1: {:.2f}%".format(specificity_1 / len(specificity_list) * 100))
+        if specificity_1 > 0:
+            print("  Percentage of folds with specificity = 1: {:.2f}%".format(specificity_1 / len(specificity_list) * 100))
         print("Cohen's kappa (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_cohens_kappa, mean_cohens_kappa - 1.96 * std_cohens_kappa / np.sqrt(len(cohens_kappa_list)), mean_cohens_kappa + 1.96 * std_cohens_kappa / np.sqrt(len(cohens_kappa_list))))
 
     # Plot average confusion matrix
@@ -286,8 +302,8 @@ def evaluate_classification_model(preprocessed_data_list, summary_list, class_la
         "std_weighted_recall": std_weighted_recall,
         "mean_weighted_f1_score": mean_weighted_f1_score,
         "std_weighted_f1_score": std_weighted_f1_score,
-        "mean_senstivity": mean_senstivity,
-        "std_senstivity": std_senstivity,
+        "mean_sensitivity": mean_sensitivity,
+        "std_sensitivity": std_sensitivity,
         "mean_specificity": mean_specificity,
         "std_specificity": std_specificity,
         "mean_f1_score": mean_f1_score,

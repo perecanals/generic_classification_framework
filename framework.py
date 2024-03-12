@@ -5,7 +5,9 @@ import itertools
 import pandas as pd
 import numpy as np
 
-from generic_classification_framework.utils.train_validation_splitting import split_data
+from sklearn.calibration import CalibratedClassifierCV
+
+from generic_classification_framework.utils.train_validation_splitting import split_data, split_data_kfold
 from generic_classification_framework.utils.preprocessing import preprocess_data
 from generic_classification_framework.utils.univariate_analysis import univariate_analysis
 from generic_classification_framework.utils.classification_utils import build_classifier, evaluate_model
@@ -44,7 +46,9 @@ class GenericClassificationFramework():
                  output_dir: str = None, 
                  id_label: str = None, 
                  class_label: str = None, 
-                 random_seed_split: int = 42
+                 regression_label: str = None, 
+                 random_seed_split: int = 42,
+                 n_ensemble: int = 1
                  ):
         """
         Parameters
@@ -61,6 +65,8 @@ class GenericClassificationFramework():
             Name of the column containing the class labels.
         random_seed_split : int
             Random seed for the train/test split.
+        n_ensemble : int
+            Number of classifiers to build for ensembled models.
             
         """
         
@@ -73,6 +79,8 @@ class GenericClassificationFramework():
             self.problem_name = None
         self.id_label = id_label
         self.class_label = class_label
+        self.regression_label = regression_label
+        self.n_ensemble = n_ensemble
 
         # Feature groups (to be adapted for a specific task)
         self.class_labels = []
@@ -141,6 +149,9 @@ class GenericClassificationFramework():
 
     def set_class_label(self, class_label: str):
         self.class_label = class_label
+    
+    def set_regression_label(self, regression_label: str):
+        self.regression_label = regression_label
 
     def set_class_labels(self, class_labels: list):
         self.class_labels = class_labels
@@ -167,7 +178,9 @@ class GenericClassificationFramework():
     def split_data_train_test(self, 
                               test_size: float = 0.3, 
                               n_splits: int = 10, 
-                              verbose: bool = True):
+                              k_fold: bool = False,
+                              verbose: bool = True,
+                              force = False):
         """
         Split the data into train and test sets using stratified sampling.
         Designed for Monte Carlo cross-validation.
@@ -191,29 +204,46 @@ class GenericClassificationFramework():
         self.test_size = test_size
         self.n_splits = n_splits
 
-        for idx in range(n_splits):
-            if os.path.exists((self.output_dir + f"/folds/{idx}/train_df_ratio{self.test_size}.csv")):
-                print(f"Loading data for split {idx} from disk...")
-                train_df = pd.read_csv(self.output_dir + f"/folds/{idx}/train_df_ratio{test_size}.csv")
-                test_df = pd.read_csv(self.output_dir + f"/folds/{idx}/test_df_ratio{test_size}.csv")
-            else:
-                print(f"\nSplitting data for split {idx}")
-                train_df, test_df = split_data(self.original_df, 
-                                               self.class_label, 
-                                               self.test_size, 
-                                               self.random_seed_split + idx, 
-                                               verbose = verbose)
-                if self.output_dir is not None:
-                    os.makedirs(self.output_dir + f"/folds/{idx}", exist_ok = True)
-                    train_df.to_csv(self.output_dir + f"/folds/{idx}/train_df_ratio{test_size}.csv", index = False)
-                    test_df.to_csv(self.output_dir + f"/folds/{idx}/test_df_ratio{test_size}.csv", index = False)
+        if k_fold:
+            for idx in range(n_splits):
+                if os.path.exists((self.output_dir + f"/folds/{idx}/train_df_ratio{self.test_size}.csv")) and not force:
+                    print(f"Loading data for split {idx} from disk...")
+                    train_df = pd.read_csv(self.output_dir + f"/folds/{idx}/train_df_ratio{test_size}.csv")
+                    test_df = pd.read_csv(self.output_dir + f"/folds/{idx}/test_df_ratio{test_size}.csv")
+                else:
+                    print(f"\nSplitting data for split {idx}")
+                    train_df, test_df = split_data(self.original_df, 
+                                                self.class_label, 
+                                                self.test_size, 
+                                                self.random_seed_split + idx, 
+                                                verbose = verbose)
+                    if self.output_dir is not None:
+                        os.makedirs(self.output_dir + f"/folds/{idx}", exist_ok = True)
+                        train_df.to_csv(self.output_dir + f"/folds/{idx}/train_df_ratio{test_size}.csv", index = False)
+                        test_df.to_csv(self.output_dir + f"/folds/{idx}/test_df_ratio{test_size}.csv", index = False)
 
-            self.train_df_list.append(train_df)
-            self.test_df_list.append(test_df)
+                self.train_df_list.append(train_df)
+                self.test_df_list.append(test_df)
+        else:
+            for idx in range(n_splits):
+                if os.path.exists((self.output_dir + f"/folds/k_{idx}/train_df_ratio{self.test_size}.csv")) and not force:
+                    print(f"Loading data for split k_{idx} from disk...")
+                    train_df = pd.read_csv(self.output_dir + f"/folds/k_{idx}/train_df_ratio{test_size}.csv")
+                    test_df = pd.read_csv(self.output_dir + f"/folds/k_{idx}/test_df_ratio{test_size}.csv")
+                self.train_df_list, self.test_df_list = split_data_kfold(self.original_df,
+                                                                        self.class_label,
+                                                                        self.n_splits,
+                                                                        self.random_seed_split,
+                                                                        verbose = verbose)
+                if self.output_dir is not None:
+                            os.makedirs(self.output_dir + f"/folds/k_{idx}", exist_ok = True)
+                            train_df.to_csv(self.output_dir + f"/folds/k_{idx}/train_df_ratio{test_size}.csv", index = False)
+                            test_df.to_csv(self.output_dir + f"/folds/k_{idx}/test_df_ratio{test_size}.csv", index = False)
 
     def preprocess_data(self, 
                         oversampling: str = None, 
-                        normalize_numerical: bool = False):
+                        normalize_numerical: bool = False,
+                        force = False):
         """
         Preprocess the data for each split. It allows us to define the oversampling technique and
         whether to normalize the numerical features.
@@ -237,7 +267,7 @@ class GenericClassificationFramework():
         self.normalize_numerical = normalize_numerical
 
         for idx in range(self.n_splits):
-            if os.path.exists((self.output_dir + f"/folds/{idx}/train_df_ratio{self.test_size}.pkl")):
+            if os.path.exists((self.output_dir + f"/folds/{idx}/train_df_ratio{self.test_size}.pkl")) and not force:
                 print(f"Loading preprocessed data for split {idx} from disk...")
                 with open(self.output_dir + f"/folds/{idx}/train_df_ratio{self.test_size}.pkl", "rb") as f:
                     preprocessed_data = pickle.load(f)
@@ -247,7 +277,8 @@ class GenericClassificationFramework():
                                                     self.class_label,
                                                     self.info_columns,
                                                     self.oversampling, 
-                                                    self.normalize_numerical)
+                                                    self.normalize_numerical,
+                                                    self.regression_label)
                 if self.output_dir is not None:
                     with open(self.output_dir + f"/folds/{idx}/preprocessed_data_ratio{self.test_size}_oversampling{self.oversampling}.pkl", "wb") as f:
                         pickle.dump(preprocessed_data, f)
@@ -300,6 +331,7 @@ class GenericClassificationFramework():
         Builds basic classifier with provided parameters. Classifier should be
         one of:
         - XGBRFClassifier
+        - XGBRFRegressor
         - XGBClassifier
         - RandomForestClassifier
         - RidgeClassifier
@@ -326,15 +358,16 @@ class GenericClassificationFramework():
         self.random_seed_initialization = random_seed_initialization
 
         for split in range(self.n_splits):
-            classifier, params = build_classifier(self.model,
+            classifiers, params = build_classifier(self.model,
                                                   self.params,
                                                   self.random_seed_initialization,
-                                                  verbose = verbose)
+                                                  self.n_ensemble,
+                                                  verbose=verbose)
             if len(self.classifiers) >= (split + 1):
-                self.classifiers[split] = classifier
+                self.classifiers[split] = classifiers
                 self.is_fitted[split] = False
             else:
-                self.classifiers.append(classifier)
+                self.classifiers.append(classifiers)
                 self.is_fitted.append(False)
 
             self.params = params
@@ -397,12 +430,13 @@ class GenericClassificationFramework():
         X_train = self.preprocessed_data_list[split]["X_train"][self.features_to_include]
         y_train = self.preprocessed_data_list[split]["y_train"]
 
-        self.classifiers[split].fit(X_train, y_train)
+        for idx in range(self.n_ensemble):
+            self.classifiers[split][idx].fit(X_train, y_train)
         self.is_fitted[split] = True
 
     def fit_classifiers_cv(self,
                            features_to_include: list = None,
-                        #    exclude_cv_features: bool = False,
+                           exclude_feature_groups: list = [],
                            force = True,
                            verbose: bool = True):
         """
@@ -423,7 +457,7 @@ class GenericClassificationFramework():
             else:
                 self.fit_classififer(features_to_include = features_to_include,
                                     split = split,
-                                    #  exclude_cv_features = exclude_cv_features,
+                                    exclude_feature_groups=exclude_feature_groups,
                                     verbose = verbose)
             if verbose:
                 print(f"Classifier fitted for split {split}")
@@ -432,6 +466,7 @@ class GenericClassificationFramework():
                             split: int = 0,
                             make_plots: bool = True,
                             calibrate: bool = False,
+                            regression: bool = False,
                             verbose: bool = True):
         """
         Evaluates the classifier on the train and test data from the specified split. 
@@ -466,6 +501,13 @@ class GenericClassificationFramework():
         self.results[split]["X_test"] = X_test
         self.results[split]["y_test"] = y_test
 
+        if regression:
+            y_class_train = self.preprocessed_data_list[split]["y_class_train"]
+            y_class_test = self.preprocessed_data_list[split]["y_class_test"]
+
+            self.results[split]["y_class_train"] = y_class_train
+            self.results[split]["y_class_test"] = y_class_test
+
         if self.model == "RidgeClassifier":
             # # For RidgeClassifier, we have to apply the softmax function to the decision function to get probabilities
             # d_train = self.classifiers[split].decision_function(X_train)
@@ -475,13 +517,23 @@ class GenericClassificationFramework():
             ## Note, it did not seem to be doing something sensible with the output probabilities, so we just omit ridge classifier for now (at least the calibration)
             raise NotImplementedError
         else:
-            if calibrate:
-                from sklearn.calibration import CalibratedClassifierCV
-                calibrated_clf = CalibratedClassifierCV(self.classifiers[split], method='sigmoid', cv='prefit')
-                calibrated_clf.fit(X_test, y_test)
-                self.classifiers[split] = calibrated_clf
-            self.results[split]['probs_train'] = self.classifiers[split].predict_proba(X_train)[:, 1]
-            self.results[split]['probs_test'] = self.classifiers[split].predict_proba(X_test)[:, 1]
+            if not regression and calibrate:
+                for idx in range(self.n_ensemble):
+                    calibrated_clf = CalibratedClassifierCV(self.classifiers[split], method='sigmoid', cv='prefit')
+                    calibrated_clf.fit(X_test, y_test)
+                    self.classifiers[split][idx] = calibrated_clf
+            probs_train = np.ndarray((len(X_train), self.n_ensemble))
+            probs_test = np.ndarray((len(X_test), self.n_ensemble))
+            for idx in range(self.n_ensemble):
+                if not regression:
+                    probs_train[:, idx] = self.classifiers[split][idx].predict_proba(X_train)[:, 1]
+                    probs_test[:, idx] = self.classifiers[split][idx].predict_proba(X_test)[:, 1]
+                else:
+                    probs_train[:, idx] = self.classifiers[split][idx].predict(X_train)
+                    probs_test[:, idx] = self.classifiers[split][idx].predict(X_test)
+
+            self.results[split]['probs_train'] = np.mean(probs_train, axis = 1)
+            self.results[split]['probs_test'] = np.mean(probs_test, axis = 1)
 
         self.results[split] = evaluate_model(self.model_name,
                                              self.results[split],
@@ -496,6 +548,7 @@ class GenericClassificationFramework():
                                 make_plots: bool = True,
                                 force_evaluation: bool = False,
                                 calibrate: bool = False,
+                                regression: bool = False,
                                 verbose: bool = True):
         """
         Wrapper for the evaluate_classifier method. Evaluates the classifier on the train and test data from all splits
@@ -513,7 +566,6 @@ class GenericClassificationFramework():
             Whether to print information about the evaluation.
 
         """
-        
         for split in range(self.n_splits):
             if os.path.exists(self.output_dir + f"/folds/{split}/{self.model_name}/results.pkl") and not force_evaluation:
                 if verbose:
@@ -524,8 +576,8 @@ class GenericClassificationFramework():
                 self.evaluate_classifier(split = split,
                                         make_plots = make_plots,
                                         calibrate = calibrate,
+                                        regression = regression,
                                         verbose = verbose)
-                
         self.results_cv = evaluate_classification_model(self.preprocessed_data_list, list(self.results.values()), self.class_label, plot=False, verbose=False)
 
     def assess_variability_cv(self, 
@@ -647,7 +699,8 @@ class GenericClassificationFramework():
                             initial_features: list = None,
                             make_performance_plot: bool = False,
                             n_features_fine_analysis: int = 1,
-                            select_best=True):
+                            select_best=True,
+                            regression: bool = False):
         """
         Perform recursive feature elimination (RFE) across multiple data splits and eliminate features
         that are consistently ranked as least important in all splits.
@@ -676,7 +729,7 @@ class GenericClassificationFramework():
         assert len(self.train_df_list) >= (n_arms * n_splits_rfe), "Not enough data splits available."
 
         if initial_features is None:
-            initial_features = [feature for feature in self.preprocessed_data_list[0]["X_train"].columns]
+            initial_features = [feature for feature in self.preprocessed_data_list[0]["X_train"].columns if feature not in self.info_columns]
 
         selected_features = initial_features
 
@@ -690,25 +743,32 @@ class GenericClassificationFramework():
 
         original_n_splits = self.n_splits
 
-        if make_performance_plot:
-            rfe_df = pd.DataFrame(columns = ["Iteration", "N_features", "Train ROC", "Train ROC (std)", "Test ROC", "Test ROC (std)"])
-            self.n_splits = min(10, self.n_splits)
-            # Evaluate performance with all features
-            self.build_classifier(model = self.model, params = self.params, random_seed_initialization = self.random_seed_initialization, verbose = False)
-            self.fit_classifiers_cv(features_to_include=selected_features, verbose = False)
-            self.evaluate_classifiers_cv(make_plots = False, force_evaluation = True, verbose = False)
-            rfe_line = pd.DataFrame({"Iteration": [iteration], 
-                                    "N_features": [len(selected_features)], 
-                                    "Train ROC": [self.results_cv["train_mean_roc_auc"]], 
-                                    "Train ROC (std)": [self.results_cv["train_std_roc_auc"]],
-                                    "Test ROC": [self.results_cv["test_mean_roc_auc"]],
-                                    "Test ROC (std)": [self.results_cv["test_std_roc_auc"]],
-                                    "Features": [selected_features]}, index = [0])
-            rfe_df = pd.concat([rfe_df, rfe_line], ignore_index = True)
-            
+        # Set baseline with all features
+        rfe_df = pd.DataFrame(columns = ["Iteration", "N_features", "Train ROC", "Train ROC (std)", "Test ROC", "Test ROC (std)"])
+        self.n_splits = min(10, self.n_splits)
+        # Evaluate performance with all features
+        self.build_classifier(model = self.model, params = self.params, random_seed_initialization = self.random_seed_initialization, verbose = False)
+        self.fit_classifiers_cv(features_to_include=selected_features, verbose = False)
+        self.evaluate_classifiers_cv(make_plots = False, force_evaluation = True, calibrate=False, verbose = False, regression=regression)
+        rfe_line = pd.DataFrame({"Iteration": [iteration], 
+                                "N_features": [len(selected_features)], 
+                                "Train ROC": [self.results_cv["train_mean_roc_auc"]], 
+                                "Train ROC (std)": [self.results_cv["train_std_roc_auc"]],
+                                "Test ROC": [self.results_cv["test_mean_roc_auc"]],
+                                "Test ROC (std)": [self.results_cv["test_std_roc_auc"]],
+                                "Features": [selected_features]}, index = [0])
+        rfe_df = pd.concat([rfe_df, rfe_line], ignore_index = True)
 
+        if make_performance_plot:
+            # Make plot with training and test ROC
+            os.makedirs(self.output_dir + "/rfe", exist_ok = True)
+            rfe_plot(rfe_df, n_splits_rfe=n_splits_rfe, output_dir=self.output_dir + "/rfe")
+
+        previous_roc = rfe_line["Test ROC"].values[0]
+
+        ignore_previous = False
         while len(selected_features) > n_features_to_select:
-            print(f"Iteration {iteration}: {len(selected_features)} features remaining")
+            print(f"\nIteration {iteration}: {len(selected_features)} features remaining")
             feature_ranking_dict[iteration] = {}
             for arm in range(n_arms):
                 print("Arm", arm, "of", n_arms)
@@ -720,11 +780,15 @@ class GenericClassificationFramework():
                     X_train = self.preprocessed_data_list[arm * n_splits_rfe + split]["X_train"]
                     y_train = self.preprocessed_data_list[arm * n_splits_rfe + split]["y_train"]
                     # Initialize RFE with the given estimator and parameters
-                    estimator, _ = build_classifier(self.model, self.params, self.random_seed_initialization)
-                    # Fit classifier with current feature list
-                    estimator.fit(X_train[selected_features], y_train)
+                    estimators, _ = build_classifier(self.model, self.params, self.random_seed_initialization, self.n_ensemble)
+                    feature_importance_aux = np.ndarray([len(estimators), len(selected_features)])
+                    for idx, estimator in enumerate(estimators):
+                        # Fit classifier with current feature list
+                        estimator.fit(X_train[selected_features], y_train)
+                        # Store feature importances
+                        feature_importance_aux[idx, :] = estimator.feature_importances_
                     # Store feature importances
-                    feature_ranking_dict[iteration][arm]["feature_importances"][split, :] = estimator.feature_importances_
+                    feature_ranking_dict[iteration][arm]["feature_importances"][split, :] = np.mean(feature_importance_aux, axis = 0)
                 # Compute mean feature importances
                 feature_ranking_dict[iteration][arm]["mean_feature_importances"] = np.mean(feature_ranking_dict[iteration][arm]["feature_importances"], axis = 0)
                 # Sort features by mean feature importances
@@ -759,41 +823,90 @@ class GenericClassificationFramework():
             # Set a maximum nmber of features to eliminate (not to pass the n_features_to_select limit)
             if len(selected_features) - len(features_to_eliminate) <= n_features_to_select:
                 coincidences[:len(selected_features) - n_features_to_select]
+
+            # Get sorted feature importance values
+            mean_feature_importances = np.ndarray([len(selected_features), n_arms])
+            for arm in range(n_arms):
+                mean_feature_importances[:, arm] = feature_ranking_dict[iteration][arm]["mean_feature_importances"]
+            mean_feature_importances = np.mean(mean_feature_importances, axis = 1)
+            # Sort feature importances
+            sorted_feature_importances = np.argsort(mean_feature_importances)
             
+            idx_feature = 0
             if len(features_to_eliminate) == 0:
-                # print("No coincidences found, Stopping RFE at iteration", iteration)
-                # break
-                # Get sorted feature importance values
-                mean_feature_importances = np.ndarray([len(selected_features), n_arms])
-                for arm in range(n_arms):
-                    mean_feature_importances[:, arm] = feature_ranking_dict[iteration][arm]["mean_feature_importances"]
-                mean_feature_importances = np.mean(mean_feature_importances, axis = 1)
-                # Sort feature importances
-                sorted_feature_importances = np.argsort(mean_feature_importances)
+                print("No coincidences found, selecting least important feature overall")
                 # Get least important feature to eliminate
                 features_to_eliminate = feature_ranking_dict[iteration][arm]["feature_names"][sorted_feature_importances[:1]]
+                idx_feature = 1
 
             print("Features to eliminate ({} features):".format(len(features_to_eliminate)), features_to_eliminate)
 
+            # Eliminate features
+            selected_features = [feature for feature in selected_features if feature not in features_to_eliminate]
+
             # Evaluate performance with all features
-            self.build_classifier(model = self.model, params = self.params, random_seed_initialization = self.random_seed_initialization, verbose = False)
-            self.fit_classifiers_cv(features_to_include=selected_features, verbose = False)
-            self.evaluate_classifiers_cv(make_plots = False, force_evaluation = True, verbose = False)
-            rfe_line = pd.DataFrame({"Iteration": [iteration], 
-                                    "N_features": [len(selected_features)], 
-                                    "Train ROC": [self.results_cv["train_mean_roc_auc"]], 
-                                    "Train ROC (std)": [self.results_cv["train_std_roc_auc"]],
-                                    "Test ROC": [self.results_cv["test_mean_roc_auc"]],
-                                    "Test ROC (std)": [self.results_cv["test_std_roc_auc"]],
-                                    "Features": [selected_features]}, index = [0])
-            rfe_df = pd.concat([rfe_df, rfe_line], ignore_index = True)
+            better_than_previous = False
+            while not better_than_previous and not ignore_previous:
+                idx_feature += 1
+                self.build_classifier(model = self.model, params = self.params, random_seed_initialization = self.random_seed_initialization, verbose=False)
+                self.fit_classifiers_cv(features_to_include=selected_features, verbose=False)
+                self.evaluate_classifiers_cv(make_plots=False, force_evaluation=True, calibrate=False, regression=regression, verbose=False)
+                rfe_line = pd.DataFrame({"Iteration": [iteration], 
+                                        "N_features": [len(selected_features)], 
+                                        "Train ROC": [self.results_cv["train_mean_roc_auc"]], 
+                                        "Train ROC (std)": [self.results_cv["train_std_roc_auc"]],
+                                        "Test ROC": [self.results_cv["test_mean_roc_auc"]],
+                                        "Test ROC (std)": [self.results_cv["test_std_roc_auc"]],
+                                        "Features": [selected_features]}, index = [0])
+                
+                if rfe_line["Test ROC"].values[0] < previous_roc and idx_feature < len(selected_features):
+                    print("Performance worse than previous iteration, reverting feature elimination")
+                    for feature in features_to_eliminate:
+                        selected_features.append(feature)
+                    step = 1
+                    features_to_eliminate = feature_ranking_dict[iteration][arm]["feature_names"][sorted_feature_importances[idx_feature - 1:idx_feature]]
+                    print("Selecting next least important feature:", features_to_eliminate)
+                    selected_features = [feature for feature in selected_features if feature not in features_to_eliminate]
+                elif rfe_line["Test ROC"].values[0] < previous_roc and idx_feature == len(selected_features):
+                    print("Removing any of the features would worsen performance, stopping RFE")
+                    better_than_previous = True
+                    for feature in features_to_eliminate:
+                        selected_features.append(feature)
+                    features_to_eliminate = feature_ranking_dict[iteration][arm]["feature_names"][sorted_feature_importances[:1]]
+                    print("Features to eliminate ({} features):".format(len(features_to_eliminate)), features_to_eliminate)
+                    # Eliminate features
+                    selected_features = [feature for feature in selected_features if feature not in features_to_eliminate]
+                    ignore_previous = True
+                else:
+                    better_than_previous = True
+                    rfe_df = pd.concat([rfe_df, rfe_line], ignore_index = True)
+                    previous_roc = rfe_line["Test ROC"].values[0]
+
+            if ignore_previous:
+                self.build_classifier(model = self.model, params = self.params, random_seed_initialization = self.random_seed_initialization, verbose=False)
+                self.fit_classifiers_cv(features_to_include=selected_features, verbose=False)
+                self.evaluate_classifiers_cv(make_plots=False, force_evaluation=True, calibrate=False, regression=regression, verbose=False)
+                rfe_line = pd.DataFrame({"Iteration": [iteration], 
+                                        "N_features": [len(selected_features)], 
+                                        "Train ROC": [self.results_cv["train_mean_roc_auc"]], 
+                                        "Train ROC (std)": [self.results_cv["train_std_roc_auc"]],
+                                        "Test ROC": [self.results_cv["test_mean_roc_auc"]],
+                                        "Test ROC (std)": [self.results_cv["test_std_roc_auc"]],
+                                        "Features": [selected_features]}, index = [0])
+                rfe_df = pd.concat([rfe_df, rfe_line], ignore_index = True)
+
             if make_performance_plot:
                 # Make plot with training and test ROC
                 os.makedirs(self.output_dir + "/rfe", exist_ok = True)
-                rfe_plot(rfe_df, self.output_dir + "/rfe")
+                rfe_plot(rfe_df, n_splits_rfe=n_splits_rfe, output_dir=self.output_dir + "/rfe")
 
-            # Eliminate features
-            selected_features = [feature for feature in selected_features if feature not in features_to_eliminate]
+            if self.output_dir is not None:
+                rfe_df.to_excel(self.output_dir + "/rfe/feature_ranking_dict.xlsx", index = False)
+
+            if len(features_to_eliminate) == 0:
+                print("No features to eliminate, stopping RFE")
+                break
+
             iteration += 1
 
         print("Reached the desired number of features in", iteration, "iterations")
@@ -804,7 +917,7 @@ class GenericClassificationFramework():
 
         if make_performance_plot:
             # Make plot with training and Test ROC
-            rfe_plot(rfe_df)
+            rfe_plot(rfe_df, n_splits_rfe=n_splits_rfe, output_dir=self.output_dir + "/rfe")
 
             self.n_splits = original_n_splits
         
@@ -856,7 +969,9 @@ class GenericClassificationFramework():
                                                                                                                                                                   # Also, it is not clear to me what threshold should be used with the averaged probabilities
                                                                                                                                                                   # I think it may be better to stick with the average prediction
 
-    def fine_tune(self, param_array_dict: dict = None):
+    def fine_tune(self, 
+                  param_array_dict: dict = None,
+                  regression: bool = False):
         """
         Fine tunes the model by performing a grid search over the provided parameters. It stores the results in the
         fine_tuning_df and best_params attributes and in the output_dir if it is not None.
@@ -888,7 +1003,7 @@ class GenericClassificationFramework():
             if not os.path.exists(self.output_dir + f"/folds/{str(0)}/{self.model_name}/results.pkl"): 
                 print(f"Computing cross-validation for model {self.model_name} ({1 + idx}/{len(all_param_combinations)})")
                 self.fit_classifiers_cv(features_to_include=self.features_to_include, force=True, verbose=False)
-                self.evaluate_classifiers_cv(make_plots = False, verbose = False)
+                self.evaluate_classifiers_cv(make_plots = False, regression=regression, verbose = False)
             else:
                 print(f"Loading cross-validation for model {self.model_name} ({1 + idx}/{len(all_param_combinations)})")
             self.assess_variability_cv(force=True)
@@ -919,7 +1034,7 @@ class GenericClassificationFramework():
                               random_seed_initialization= self.random_seed_initialization,
                               verbose = True)
         self.fit_classifiers_cv(features_to_include=self.features_to_include)
-        self.evaluate_classifiers_cv(make_plots = True)
+        self.evaluate_classifiers_cv(make_plots = True, regression=regression)
         self.assess_variability_cv()
         self.display_results()
 

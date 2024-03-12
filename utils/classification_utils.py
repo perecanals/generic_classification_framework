@@ -12,115 +12,133 @@ sns.set_style("whitegrid")
 
 from sklearn.metrics import roc_curve, auc, precision_recall_curve, f1_score
 
-def build_classifier(model_name, params, random_seed, verbose = False):
+def build_classifier(model_name, params, random_seed, n_ensemble = 1, verbose = False):
 
     assert model_name in ["LogisticRegression", "XGBRFClassifier", "XGBRFRegressor", "XGBClassifier", "RidgeClassifier", "RandomForestClassifier", "SVC"], "model_name must be either LogisticRegression, XGBRFClassifier, XGBRFRegressor, XGBClassifier, RidgeClassifier, SVC or RandomForestClassifier"
 
-    if model_name == "LogisticRegression":
-        if params is None:
-            params = {
-                "penalty": "l2",
-                "C": 1.0,
-                "solver": "lbfgs",
-                "max_iter": 1000,
-                "random_state": random_seed
-            }
-        classifier = LogisticRegression(**params)
-    elif model_name == "XGBRFClassifier":
-        if params is None:
-            params = {
-                "n_estimators": 20,
-                "max_depth": 1,
-                "random_state": random_seed,
-                "subsample": 0.2,
-            }
-        classifier = xgb.XGBRFClassifier(**params)
-    elif model_name == "XGBRFRegressor":
-        if params is None:
-            params = {
-                "n_estimators": 200,
-                "max_depth": 1,
-                "random_state": random_seed,
-                "subsample": 0.2,
-            }
-        classifier = xgb.XGBRFRegressor(**params)
-    elif model_name == "XGBClassifier":
-        if params is None:
-            params = {
-                "n_estimators": 50,
-                "max_depth": 2,
-                "learning_rate": 1.,
-                "verbosity": 0,
-                "random_state": random_seed,
-                "subsample": 0.1,
-            }
-        classifier = xgb.XGBClassifier(**params)
-    elif model_name == "RidgeClassifier":
-        if params is None:
-            params = {
-                "alpha": 1.0,
-                "fit_intercept": True,
-                "max_iter": None,
-                "tol": 0.001,
-                "class_weight": "balanced",
-                "solver": "auto",
-                "random_state": random_seed,
-                "copy_X": True,
-            }
-        classifier = RidgeClassifier(**params)  
-    if model_name == "RandomForestClassifier":
-        if params is None:
-            params = {
-                "n_estimators": 50,
-                "criterion": "gini",
-                "max_depth": 1,
-                "min_samples_leaf": 2,
-                "min_weight_fraction_leaf": 0.0,
-                "max_leaf_nodes": None,
-                "random_state": random_seed,
-                "class_weight": "balanced",
-                "max_features": "log2"
-            }
-        classifier = RandomForestClassifier(**params)
-    if model_name == "SVC":
-        if params is None:
-            params = {
-                "C": 1.0,
-                "kernel": "rbf",
-                "degree": 3,
-                "gamma": "scale",
-                "coef0": 0.0,
-                "shrinking": True,
-                "probability": False,
-                "cache_size": 200,
-                "class_weight": "balanced",
-                "decision_function_shape": "ovr",
-                "random_state": random_seed,
-                "probability": True
-            }
-        classifier = SVC(**params)
+    classifiers = []
+    for idx in range(n_ensemble):
+        if model_name == "LogisticRegression":
+            if params is None:
+                params = {
+                    "penalty": "l2",
+                    "C": 1.0,
+                    "solver": "lbfgs",
+                    "max_iter": 1000,
+                    "random_state": random_seed + idx * 100
+                }
+            params["random_state"] = params["random_state"] + idx * 100
+            classifier = LogisticRegression(**params)
+        elif model_name == "XGBRFClassifier":
+            if params is None:
+                params = {
+                    "n_estimators": 20,
+                    "max_depth": 1,
+                    "random_state": random_seed + idx * 100,
+                    "subsample": 0.2,
+                }
+            params["random_state"] = params["random_state"] + idx * 100
+            classifier = xgb.XGBRFClassifier(**params)
+        elif model_name == "XGBRFRegressor":
+            if params is None:
+                params = {
+                    "n_estimators": 200,
+                    "max_depth": 1,
+                    "random_state": random_seed + idx * 100,
+                    "subsample": 0.2,
+                }
+            params["random_state"] = params["random_state"] + idx * 100
+            classifier = xgb.XGBRFRegressor(**params)
+        elif model_name == "XGBClassifier":
+            if params is None:
+                params = {
+                    "n_estimators": 50,
+                    "max_depth": 2,
+                    "learning_rate": 1.,
+                    "verbosity": 0,
+                    "random_state": random_seed + idx * 100,
+                    "subsample": 0.1,
+                }
+            classifier = xgb.XGBClassifier(**params)
+        elif model_name == "RidgeClassifier":
+            if params is None:
+                params = {
+                    "alpha": 1.0,
+                    "fit_intercept": True,
+                    "max_iter": None,
+                    "tol": 0.001,
+                    "class_weight": "balanced",
+                    "solver": "auto",
+                    "random_state": random_seed + idx * 100,
+                    "copy_X": True,
+                }
+            params["random_state"] = params["random_state"] + idx * 100
+            classifier = RidgeClassifier(**params)  
+        if model_name == "RandomForestClassifier":
+            if params is None:
+                params = {
+                    "n_estimators": 50,
+                    "criterion": "gini",
+                    "max_depth": 1,
+                    "min_samples_leaf": 2,
+                    "min_weight_fraction_leaf": 0.0,
+                    "max_leaf_nodes": None,
+                    "random_state": random_seed + idx * 100,
+                    "class_weight": "balanced",
+                    "max_features": "log2"
+                }
+            params["random_state"] = params["random_state"] + idx * 100
+            classifier = RandomForestClassifier(**params)
+        if model_name == "SVC":
+            if params is None:
+                params = {
+                    "C": 1.0,
+                    "kernel": "rbf",
+                    "degree": 3,
+                    "gamma": "scale",
+                    "coef0": 0.0,
+                    "shrinking": True,
+                    "probability": False,
+                    "cache_size": 200,
+                    "class_weight": "balanced",
+                    "decision_function_shape": "ovr",
+                    "random_state": random_seed + idx * 100,
+                    "probability": True
+                }
+            params["random_state"] = params["random_state"] + idx * 100
+            classifier = SVC(**params)
+        classifiers.append(classifier)
+    
+    params["random_state"] = random_seed
 
     if verbose:
         print(f"Building {model_name} classifier with following parameters:")
         for key, value in params.items():
             print(f"\t{key}: {value}")
 
-    return classifier, params
+    return classifiers, params
 
 def evaluate_model(model_name, results_summary, plot=True, output_dir=None, verbose = True):
+    if "y_class_train" in results_summary:
+        y_train = results_summary["y_class_train"]
+        y_test = results_summary["y_class_test"]
+    else:
+        y_train = results_summary["y_train"]
+        y_test = results_summary["y_test"]
+
     # Read regression prediction from summary
     probs_train = results_summary['probs_train']
     probs_test = results_summary['probs_test']
 
     # Compute tpr, fpr, roc_auc from train predictions
-    fpr_train, tpr_train, thresholds_train = roc_curve(results_summary["y_train"], probs_train)
+    fpr_train, tpr_train, thresholds_train = roc_curve(y_train, probs_train)
     roc_auc_train = auc(fpr_train, tpr_train)
     results_summary['fpr_train'] = fpr_train
     results_summary['tpr_train'] = tpr_train
     results_summary['roc_auc_train'] = roc_auc_train
 
     # Compute non-weighted f1 score to determine optimal threshold
-    precision_train, recall_train, thresholds_train = precision_recall_curve(results_summary["y_train"], probs_train)
+    precision_train, recall_train, thresholds_train = precision_recall_curve(y_train, probs_train)
     f1_scores_train = 2 * (precision_train * recall_train) / (precision_train + recall_train)
     # Substitute nans for 0
     f1_scores_train = np.nan_to_num(f1_scores_train)
@@ -129,18 +147,18 @@ def evaluate_model(model_name, results_summary, plot=True, output_dir=None, verb
     # Compute class predictions and weighted f1 score with optimal threshold
     y_train_pred = np.where(probs_train >= optimal_threshold_train, 1, 0)
     results_summary['y_train_pred'] = y_train_pred
-    f1_score_train =  f1_score(results_summary["y_train"], y_train_pred, average="weighted")
+    f1_score_train =  f1_score(y_train, y_train_pred, average="weighted")
     results_summary['f1_score_train'] = f1_score_train
 
     # Compute tpr, fpr, roc_auc from test predictions
-    fpr_test, tpr_test, thresholds_test = roc_curve(results_summary["y_test"], probs_test)
+    fpr_test, tpr_test, thresholds_test = roc_curve(y_test, probs_test)
     roc_auc_test = auc(fpr_test, tpr_test)
     results_summary['fpr_test'] = fpr_test
     results_summary['tpr_test'] = tpr_test
     results_summary['roc_auc_test'] = roc_auc_test
 
     # Compute non-weighted f1 score to determine optimal threshold
-    precision_test, recall_test, thresholds_test = precision_recall_curve(results_summary["y_test"], probs_test)
+    precision_test, recall_test, thresholds_test = precision_recall_curve(y_test, probs_test)
     precision_test[0] = 1
     precision_test[-1] = 0
     recall_test[0] = 0
@@ -150,21 +168,21 @@ def evaluate_model(model_name, results_summary, plot=True, output_dir=None, verb
     f05_scores_test = (1 + 0.5 ** 2) * (precision_test * recall_test) / (0.5 ** 2 * precision_test + recall_test)
     # Substitute nans for 0
     f1_scores_test = np.nan_to_num(f1_scores_test)
-    optimal_threshold_test = thresholds_test[np.argmax(tpr_test - fpr_test)] # Optimize for youden's index
-    # optimal_threshold_test = thresholds_test[np.argmax(f1_scores_test)] # Optimize for f1 score
+    # optimal_threshold_test = thresholds_test[np.argmax(tpr_test - fpr_test)] # Optimize for youden's index
+    optimal_threshold_test = thresholds_test[np.argmax(f1_scores_test)] # Optimize for f1 score
     # optimal_threshold_test = thresholds_test[np.argmax(f15_scores_test)] # Optimize for f1.5 score
     # optimal_threshold_test = thresholds_test[np.argmax(f05_scores_test)] # Optimize for f0.5 score
     results_summary['optimal_threshold_test'] = optimal_threshold_test
     # Compute class predictions and weighted f1 score with optimal threshold (test)
     y_test_pred = np.where(probs_test >= optimal_threshold_test, 1, 0)
     results_summary['y_test_pred'] = y_test_pred
-    f1_score_test =  f1_score(results_summary["y_test"], y_test_pred, average="weighted")
+    f1_score_test =  f1_score(y_test, y_test_pred, average="weighted")
     results_summary['f1_score_test'] = f1_score_test
 
     # Compute class predictions and weighted f1 score with optimal threshold (train)
     y_test_train_pred = np.where(probs_test >= optimal_threshold_train, 1, 0)
     results_summary['y_test_train_class_pred'] = y_test_train_pred
-    f1_score_test_train =  f1_score(results_summary["y_test"], y_test_train_pred, average="weighted")
+    f1_score_test_train =  f1_score(y_test, y_test_train_pred, average="weighted")
     results_summary['f1_score_test_train'] = f1_score_test_train
 
     if verbose:
@@ -173,7 +191,7 @@ def evaluate_model(model_name, results_summary, plot=True, output_dir=None, verb
         print("Test: f1_score = {}, roc_auc = {}".format(round(f1_score_test_train, 2), round(roc_auc_test, 2)))
 
     if plot:
-        make_prob_dist_plots(results_summary['model_name'], results_summary['y_train'], probs_train, results_summary['y_test'], probs_test, optimal_threshold_train, optimal_threshold_test, output_dir)
+        make_prob_dist_plots(results_summary['model_name'], y_train, probs_train, y_test, probs_test, optimal_threshold_train, optimal_threshold_test, output_dir)
         plot_roc(results_summary['model_name'], fpr_train, tpr_train, roc_auc_train, fpr_test, tpr_test, roc_auc_test, output_dir)
 
     return results_summary

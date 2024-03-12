@@ -23,6 +23,7 @@ def univariate_analysis(df, class_label, features_to_ignore, output_dir = None, 
             try:    
                 X = sm.add_constant(df[feature].replace([np.inf, -np.inf], np.nan).dropna())  # adding a constant
                 y = df[class_label]
+                y = np.where(y > 1.5, 1, y) # Convert to binary
 
                 model = sm.Logit(y, X)
                 result = model.fit(disp=0)  # disp=0 turns off the convergence messages
