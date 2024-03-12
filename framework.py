@@ -225,20 +225,17 @@ class GenericClassificationFramework():
                 self.train_df_list.append(train_df)
                 self.test_df_list.append(test_df)
         else:
+            self.train_df_list, self.test_df_list = split_data_kfold(self.original_df,
+                                                                    self.class_label,
+                                                                    self.n_splits,
+                                                                    self.random_seed_split,
+                                                                    verbose = verbose)
             for idx in range(n_splits):
-                if os.path.exists((self.output_dir + f"/folds/k_{idx}/train_df_ratio{self.test_size}.csv")) and not force:
-                    print(f"Loading data for split k_{idx} from disk...")
-                    train_df = pd.read_csv(self.output_dir + f"/folds/k_{idx}/train_df_ratio{test_size}.csv")
-                    test_df = pd.read_csv(self.output_dir + f"/folds/k_{idx}/test_df_ratio{test_size}.csv")
-                self.train_df_list, self.test_df_list = split_data_kfold(self.original_df,
-                                                                        self.class_label,
-                                                                        self.n_splits,
-                                                                        self.random_seed_split,
-                                                                        verbose = verbose)
+
                 if self.output_dir is not None:
-                            os.makedirs(self.output_dir + f"/folds/k_{idx}", exist_ok = True)
-                            train_df.to_csv(self.output_dir + f"/folds/k_{idx}/train_df_ratio{test_size}.csv", index = False)
-                            test_df.to_csv(self.output_dir + f"/folds/k_{idx}/test_df_ratio{test_size}.csv", index = False)
+                    os.makedirs(self.output_dir + f"/folds/k_{idx}", exist_ok = True)
+                    self.train_df_list[idx].to_csv(self.output_dir + f"/folds/k_{idx}/train_df_ratio{test_size}.csv", index = False)
+                    self.test_df_list[idx].to_csv(self.output_dir + f"/folds/k_{idx}/test_df_ratio{test_size}.csv", index = False)
 
     def preprocess_data(self, 
                         oversampling: str = None, 
