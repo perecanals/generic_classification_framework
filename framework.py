@@ -204,7 +204,7 @@ class GenericClassificationFramework():
         self.test_size = test_size
         self.n_splits = n_splits
 
-        if k_fold:
+        if not k_fold:
             for idx in range(n_splits):
                 if os.path.exists((self.output_dir + f"/folds/{idx}/train_df_ratio{self.test_size}.csv")) and not force:
                     print(f"Loading data for split {idx} from disk...")
