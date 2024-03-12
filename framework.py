@@ -233,9 +233,9 @@ class GenericClassificationFramework():
             for idx in range(n_splits):
 
                 if self.output_dir is not None:
-                    os.makedirs(self.output_dir + f"/folds/k_{idx}", exist_ok = True)
-                    self.train_df_list[idx].to_csv(self.output_dir + f"/folds/k_{idx}/train_df_ratio{test_size}.csv", index = False)
-                    self.test_df_list[idx].to_csv(self.output_dir + f"/folds/k_{idx}/test_df_ratio{test_size}.csv", index = False)
+                    os.makedirs(self.output_dir + f"/folds/{idx}", exist_ok = True)
+                    self.train_df_list[idx].to_csv(self.output_dir + f"/folds/{idx}/train_df_ratio{test_size}.csv", index = False)
+                    self.test_df_list[idx].to_csv(self.output_dir + f"/folds/{idx}/test_df_ratio{test_size}.csv", index = False)
 
     def preprocess_data(self, 
                         oversampling: str = None, 
