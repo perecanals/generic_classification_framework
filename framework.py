@@ -62,7 +62,9 @@ class GenericClassificationFramework():
         id_label : str
             Name of the column containing the identifiers.
         class_label : str
-            Name of the column containing the class labels.
+            Name of the column containing the class label.
+        regression_label : str
+            Name of the column containing the regression label.
         random_seed_split : int
             Random seed for the train/test split.
         n_ensemble : int
@@ -194,8 +196,12 @@ class GenericClassificationFramework():
             Proportion of the test set.
         n_splits : int
             Number of splits to perform.
+        k_fold : bool
+            Whether to perform k-fold cross-validation.
         verbose : bool
             Whether to print information about the splits.
+        force : bool
+            Whether to force the split even if the data is already stored.
         """
 
         assert self.original_df is not None, "Please, load a dataframe using the load_data method"
@@ -255,7 +261,8 @@ class GenericClassificationFramework():
             Name of the oversampling technique to use. If None, no oversampling is performed.
         normalize_numerical : bool
             Whether to normalize the numerical features.
-
+        force : bool
+            Whether to force the preprocessing even if the data is already stored.
         """
 
         assert self.train_df_list is not None, "Please, first split the data using the split_data_train_test method"
@@ -444,6 +451,11 @@ class GenericClassificationFramework():
         ----------
         features_to_include : list
             List of features to include in the classifier.
+        exclude_feature_groups : list
+            List of feature groups to exclude from the classifier. Elements
+            should be the keys (strings) of the feature_groups attribute.
+        force : bool
+            Whether to force the fitting even if the results are already stored.
         verbose : bool
             Whether to print information about the fitting.
 
@@ -479,6 +491,8 @@ class GenericClassificationFramework():
             Whether to make plots of the evaluation.
         calibrate : bool
             Whether to calibrate the classifier.
+        regression : bool   
+            Whether to perform regression instead of classification.
         verbose : bool
             Whether to print information about the evaluation.
 
@@ -516,7 +530,7 @@ class GenericClassificationFramework():
         else:
             if not regression and calibrate:
                 for idx in range(self.n_ensemble):
-                    calibrated_clf = CalibratedClassifierCV(self.classifiers[split], method='sigmoid', cv='prefit')
+                    calibrated_clf = CalibratedClassifierCV(self.classifiers[split][idx], method='sigmoid', cv='prefit')
                     calibrated_clf.fit(X_test, y_test)
                     self.classifiers[split][idx] = calibrated_clf
             probs_train = np.ndarray((len(X_train), self.n_ensemble))
@@ -546,7 +560,8 @@ class GenericClassificationFramework():
                                 force_evaluation: bool = False,
                                 calibrate: bool = False,
                                 regression: bool = False,
-                                verbose: bool = True):
+                                verbose: bool = True,
+                                optimal_threshold_criterion: str = "youden"):
         """
         Wrapper for the evaluate_classifier method. Evaluates the classifier on the train and test data from all splits
         of the cross-validation.
@@ -559,8 +574,13 @@ class GenericClassificationFramework():
             Whether to force the evaluation even if the results are already stored.
         calibrate : bool
             Whether to calibrate the classifier.
+        regression : bool
+            Whether to perform regression instead of classification.
         verbose : bool
             Whether to print information about the evaluation.
+        optimal_threshold_criterion : str
+            Criterion to use for the optimal threshold selection. 
+            Can be "youden", "f1", "f2", or "f05".
 
         """
         for split in range(self.n_splits):
@@ -575,7 +595,7 @@ class GenericClassificationFramework():
                                         calibrate = calibrate,
                                         regression = regression,
                                         verbose = verbose)
-        self.results_cv = evaluate_classification_model(self.preprocessed_data_list, list(self.results.values()), self.class_label, plot=False, verbose=False)
+        self.results_cv = evaluate_classification_model(self.preprocessed_data_list, list(self.results.values()), self.class_label, plot=False, verbose=False, optimal_threshold_criterion=optimal_threshold_criterion)
 
     def assess_variability_cv(self, 
                               force: bool =False):
@@ -616,9 +636,6 @@ class GenericClassificationFramework():
         """
         Method to display the variability results in a table and plot, as well as print several classification metrics.
         """
-        # if self.variability_results is not None:
-        #     display(self.variability_results)
-
         os.makedirs(self.output_dir + f"/aggregated_test_size{self.test_size}/{self.model_name}", exist_ok = True)
         evaluate_classification_model(preprocessed_data_list=self.preprocessed_data_list, 
                                       summary_list=list(self.results.values()), 
@@ -626,78 +643,18 @@ class GenericClassificationFramework():
                                       plot=True,
                                       output_dir=self.output_dir + f"/aggregated_test_size{self.test_size}/{self.model_name}")
 
-    def perform_rfe_cv(self, 
-                       n_features_to_select: int = 100, 
-                       step = 0.3, 
-                       n_splits_rfe: int = 5, 
-                       verbose: bool = False):
-        """
-        Perform recursive feature elimination (RFE) across multiple data splits and eliminate features
-        that are consistently ranked as least important in all splits.
-
-        Parameters
-        ----------
-        n_features_to_select : int
-            Number of features to select.
-        step : float
-            Fraction of features to eliminate at each step.
-        n_splits_rfe : int
-            Number of splits to perform RFE on.
-        verbose : bool
-            Whether to print information about the RFE.
-
-        """
-
-        from sklearn.feature_selection import RFE
-        from collections import defaultdict
-
-        assert len(self.train_df_list) >= n_splits_rfe, "Not enough data splits available."
-
-        # Dictionary to keep track of feature rankings across splits
-        feature_rankings = defaultdict(list)
-
-        # Perform RFE for each split and store the rankings
-        for split in range(n_splits_rfe):
-            X_train = self.preprocessed_data_list[split]["X_train"][self.features_to_include]
-            y_train = self.preprocessed_data_list[split]["y_train"]
-
-            # Initialize RFE with the given estimator and parameters
-            estimator, _ = build_classifier(self.model, self.params, self.random_seed_initialization)
-            rfe = RFE(estimator=estimator, 
-                      n_features_to_select=n_features_to_select, 
-                      step=step, 
-                      verbose=verbose)
-            rfe.fit(X_train, y_train)
-
-            # Store the ranking for each feature
-            for feature, ranking in zip(X_train.columns, rfe.ranking_):
-                feature_rankings[feature].append(ranking)
-
-            if verbose:
-                print(f"RFE completed for split {split}.")
-
-        # Calculate average ranking for each feature
-        average_rankings = {feature: sum(rankings) / len(rankings) for feature, rankings in feature_rankings.items()}
-
-        # Select the top n_features_to_select based on average ranking
-        selected_features = sorted(average_rankings, key=average_rankings.get)[:n_features_to_select]
-
-        if verbose:
-            print(f"Selected features based on average ranking: {selected_features}")
-
-        self.selected_features = selected_features
-        self.feature_rankings = average_rankings
-
-    def perform_rfe_cv_gain(self, 
-                            n_features_to_select: int = 10, 
-                            step = 0.1, 
-                            n_arms = 2,
-                            n_splits_rfe: int = 10, 
-                            initial_features: list = None,
-                            make_performance_plot: bool = False,
-                            n_features_fine_analysis: int = 1,
-                            select_best=True,
-                            regression: bool = False):
+    def perform_rfe(self, 
+                    n_features_to_select: int = 10, 
+                    step = 0.1, 
+                    n_arms = 2,
+                    n_splits_rfe: int = 10, 
+                    initial_features: list = None,
+                    make_performance_plot: bool = False,
+                    n_features_fine_analysis: int = 1,
+                    select_best=True,
+                    tolerance = 1.0,
+                    exclude_feature_groups: list = [],
+                    regression: bool = False):
         """
         Perform recursive feature elimination (RFE) across multiple data splits and eliminate features
         that are consistently ranked as least important in all splits.
@@ -721,7 +678,15 @@ class GenericClassificationFramework():
             no fine analysis will be made.
         select_best : bool
             Whether to select the best features based on the fine analysis.
-
+        tolerance : float
+            Tolerance for the RFE process. If in an iteration the performance does not drop below
+            the tolerance (understood as a percentage of the previous iteration's performance), 
+            the process continues.
+        exclude_feature_groups : list
+            List of feature groups to exclude from the RFE. Elements
+            should be the keys (strings) of the feature_groups attribute. 
+        regression : bool
+            Whether to perform regression instead of classification.
         """
         assert len(self.train_df_list) >= (n_arms * n_splits_rfe), "Not enough data splits available."
 
@@ -729,6 +694,12 @@ class GenericClassificationFramework():
             initial_features = [feature for feature in self.preprocessed_data_list[0]["X_train"].columns if feature not in self.info_columns]
 
         selected_features = initial_features
+
+        for feature_group in exclude_feature_groups:
+            if feature_group in self.feature_groups:
+                selected_features = [feature for feature in selected_features if feature not in self.feature_groups[feature_group]]
+            else:
+                print(f"Feature group {feature_group} not found.")
 
         if isinstance(n_features_to_select, float):
             n_features_to_select *= len(initial_features)
@@ -856,7 +827,7 @@ class GenericClassificationFramework():
                                         "Test ROC (std)": [self.results_cv["test_std_roc_auc"]],
                                         "Features": [selected_features]}, index = [0])
                 
-                if rfe_line["Test ROC"].values[0] < previous_roc and idx_feature < len(selected_features):
+                if rfe_line["Test ROC"].values[0] < previous_roc * tolerance and idx_feature < len(selected_features):
                     print("Performance worse than previous iteration, reverting feature elimination")
                     for feature in features_to_eliminate:
                         selected_features.append(feature)
@@ -864,8 +835,8 @@ class GenericClassificationFramework():
                     features_to_eliminate = feature_ranking_dict[iteration][arm]["feature_names"][sorted_feature_importances[idx_feature - 1:idx_feature]]
                     print("Selecting next least important feature:", features_to_eliminate)
                     selected_features = [feature for feature in selected_features if feature not in features_to_eliminate]
-                elif rfe_line["Test ROC"].values[0] < previous_roc and idx_feature == len(selected_features):
-                    print("Removing any of the features would worsen performance, stopping RFE")
+                elif rfe_line["Test ROC"].values[0] < previous_roc * tolerance and idx_feature == len(selected_features):
+                    print("Removing any of the features would worsen performance, removing least important one")
                     better_than_previous = True
                     for feature in features_to_eliminate:
                         selected_features.append(feature)
@@ -979,7 +950,8 @@ class GenericClassificationFramework():
         ----------
         param_array_dict : dict
             Dictionary with the parameters to fine tune.
-        
+        regression : bool
+            Whether to perform regression instead of classification.
         """
         
         assert param_array_dict is not None, "Please, provide a dictionary with the parameters to fine tune"
@@ -1000,7 +972,7 @@ class GenericClassificationFramework():
             if not os.path.exists(self.output_dir + f"/folds/{str(0)}/{self.model_name}/results.pkl"): 
                 print(f"Computing cross-validation for model {self.model_name} ({1 + idx}/{len(all_param_combinations)})")
                 self.fit_classifiers_cv(features_to_include=self.features_to_include, force=True, verbose=False)
-                self.evaluate_classifiers_cv(make_plots = False, regression=regression, verbose = False)
+                self.evaluate_classifiers_cv(make_plots=False, regression=regression, verbose=False)
             else:
                 print(f"Loading cross-validation for model {self.model_name} ({1 + idx}/{len(all_param_combinations)})")
             self.assess_variability_cv(force=True)

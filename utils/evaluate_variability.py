@@ -11,7 +11,7 @@ from sklearn.metrics import *
 import warnings
 warnings.filterwarnings("ignore")
 
-def evaluate_classification_model(preprocessed_data_list, summary_list, class_label, plot=True, output_dir=None, verbose = True):
+def evaluate_classification_model(preprocessed_data_list, summary_list, class_label, plot=True, output_dir=None, verbose = True, optimal_threshold_criterion="youden"):
     fpr_train_list = []
     tpr_train_list = []
     fpr_test_list = []
@@ -81,6 +81,26 @@ def evaluate_classification_model(preprocessed_data_list, summary_list, class_la
         roc_auc_test_list.append(summary["roc_auc_test"])
         pr_auc_train_list.append(pr_auc_train)
         pr_auc_test_list.append(pr_auc_test)
+
+        # Compute optimal threshold depending on the criterion
+        # tpr_, fpr_, thresholds = roc_curve(y_test, summary["probs_test"])
+
+        # if optimal_threshold_criterion == "youden":
+        #     # Compute optimal threshold by maximizing the Youden's index
+        #     optimal_threshold = thresholds[np.argmax(tpr_ - fpr_)]
+        #     y_test_pred = (summary["probs_test"] >= optimal_threshold).astype(int)
+        # elif optimal_threshold_criterion == "f1":
+        #     # Compute optimal threshold by maximizing the F1-score
+        #     optimal_threshold = thresholds[np.argmax(2 * tpr_ / (2 * tpr_ + fpr_))]
+        #     y_test_pred = (summary["probs_test"] >= optimal_threshold).astype(int)
+        # elif optimal_threshold_criterion == "f2":
+        #     # Compute optimal threshold by maximizing the F2-score
+        #     optimal_threshold = thresholds[np.argmax(5 * tpr_ / (5 * tpr_ + fpr_))]
+        #     y_test_pred = (summary["probs_test"] >= optimal_threshold).astype(int)
+        # elif optimal_threshold_criterion == "f05":
+        #     # Compute optimal threshold by maximizing the F0.5-score
+        #     optimal_threshold = thresholds[np.argmax(0.5 * tpr_ / (0.5 * tpr_ + fpr_))]
+        #     y_test_pred = (summary["probs_test"] >= optimal_threshold).astype(int)
 
         # Compute confusion matrix
         cm = confusion_matrix(y_test, y_test_pred)
