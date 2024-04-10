@@ -118,7 +118,7 @@ def build_classifier(model_name, params, random_seed, n_ensemble = 1, verbose = 
 
     return classifiers, params
 
-def evaluate_model(model_name, results_summary, plot=True, output_dir=None, verbose = True):
+def evaluate_model(model_name, results_summary, plot=True, output_dir=None, verbose=True, optimal_threshold_criterion="youden"):
     if "y_class_train" in results_summary:
         y_train = results_summary["y_class_train"]
         y_test = results_summary["y_class_test"]
@@ -151,30 +151,53 @@ def evaluate_model(model_name, results_summary, plot=True, output_dir=None, verb
     results_summary['f1_score_train'] = f1_score_train
 
     # Compute tpr, fpr, roc_auc from test predictions
-    fpr_test, tpr_test, thresholds_test = roc_curve(y_test, probs_test)
+    fpr_test, tpr_test, thresholds_test_roc = roc_curve(y_test, probs_test)
     roc_auc_test = auc(fpr_test, tpr_test)
     results_summary['fpr_test'] = fpr_test
     results_summary['tpr_test'] = tpr_test
     results_summary['roc_auc_test'] = roc_auc_test
 
     # Compute non-weighted f1 score to determine optimal threshold
-    precision_test, recall_test, thresholds_test = precision_recall_curve(y_test, probs_test)
+    precision_test, recall_test, thresholds_test_pr = precision_recall_curve(y_test, probs_test)
     precision_test[0] = 1
     precision_test[-1] = 0
     recall_test[0] = 0
     recall_test[-1] = 1
-    f1_scores_test = 2 * (precision_test * recall_test) / (precision_test + recall_test)
-    f15_scores_test = (1 + 1.5 ** 2) * (precision_test * recall_test) / (1.5 ** 2 * precision_test + recall_test)
-    f05_scores_test = (1 + 0.5 ** 2) * (precision_test * recall_test) / (0.5 ** 2 * precision_test + recall_test)
-    # Substitute nans for 0
-    f1_scores_test = np.nan_to_num(f1_scores_test)
-    # optimal_threshold_test = thresholds_test[np.argmax(tpr_test - fpr_test)] # Optimize for youden's index
-    optimal_threshold_test = thresholds_test[np.argmax(f1_scores_test)] # Optimize for f1 score
-    # optimal_threshold_test = thresholds_test[np.argmax(f15_scores_test)] # Optimize for f1.5 score
-    # optimal_threshold_test = thresholds_test[np.argmax(f05_scores_test)] # Optimize for f0.5 score
+
+    if optimal_threshold_criterion == "youden":
+        # Compute optimal threshold by maximizing the Youden's index
+        youden_index = tpr_test - fpr_test
+        optimal_threshold_test = thresholds_test_roc[np.argmax(youden_index)]
+        y_test_pred = (probs_test > optimal_threshold_test).astype(int)
+    elif optimal_threshold_criterion == "f1":
+        # Compute optimal threshold by maximizing the F1-score
+        f1_scores_ = 2 * (precision_test * recall_test) / (precision_test + recall_test)
+        f1_scores_ = np.nan_to_num(f1_scores_)
+        optimal_threshold_test = thresholds_test_pr[np.argmax(f1_scores_)]
+        y_test_pred = (probs_test > optimal_threshold_test).astype(int)
+    elif optimal_threshold_criterion == "f15":
+        # Compute optimal threshold by maximizing the F1.5-score
+        f15_scores_ = (1 + 1.5 ** 2) * (precision_test * recall_test) / (1.5 ** 2 * precision_test + recall_test)
+        f15_scores_ = np.nan_to_num(f15_scores_)
+        optimal_threshold_test = thresholds_test_pr[np.argmax(f15_scores_)]
+        y_test_pred = (probs_test > optimal_threshold_test).astype(int)
+    elif optimal_threshold_criterion == "f2":
+        # Compute optimal threshold by maximizing the F2-score
+        f2_scores_ = (1 + 2 ** 2) * (precision_test * recall_test) / (2 ** 2 * precision_test + recall_test)
+        f2_scores_ = np.nan_to_num(f2_scores_)
+        optimal_threshold_test = thresholds_test_pr[np.argmax(f2_scores_)]
+        y_test_pred = (probs_test > optimal_threshold_test).astype(int)
+    elif optimal_threshold_criterion == "f05":
+        # Compute optimal threshold by maximizing the F0.5-score
+        f05_scores_ = (1 + 0.5 ** 2) * (precision_test * recall_test) / (0.5 ** 2 * precision_test + recall_test)
+        f05_scores_ = np.nan_to_num(f05_scores_)
+        optimal_threshold_test = thresholds_test_pr[np.argmax(f05_scores_)]
+        y_test_pred = (probs_test > optimal_threshold_test).astype(int)
+        
     results_summary['optimal_threshold_test'] = optimal_threshold_test
+
     # Compute class predictions and weighted f1 score with optimal threshold (test)
-    y_test_pred = np.where(probs_test >= optimal_threshold_test, 1, 0)
+    y_test_pred = np.where(probs_test > optimal_threshold_test, 1, 0)
     results_summary['y_test_pred'] = y_test_pred
     f1_score_test =  f1_score(y_test, y_test_pred, average="weighted")
     results_summary['f1_score_test'] = f1_score_test
@@ -225,20 +248,20 @@ def make_prob_dist_plots(model_name, y_train, probs_train, y_test, probs_test, o
 
     # Make a subplot to plot the data side by side
     _, ax = plt.subplots(1, 2, figsize=(10, 5))
-    ax[0].hist(df_train['tp'].dropna(), bins=20, alpha=0.5, label='TP')
-    ax[0].hist(df_train['fp'].dropna(), bins=20, alpha=0.5, label='FP')
-    ax[0].hist(df_train['tn'].dropna(), bins=20, alpha=0.5, label='TN')
-    ax[0].hist(df_train['fn'].dropna(), bins=20, alpha=0.5, label='FN')
+    ax[0].hist(df_train['tp'].dropna(), bins=20, range=(0, 1), alpha=0.5, label='TP')
+    ax[0].hist(df_train['fp'].dropna(), bins=20, range=(0, 1), alpha=0.5, label='FP')
+    ax[0].hist(df_train['tn'].dropna(), bins=20, range=(0, 1), alpha=0.5, label='TN')
+    ax[0].hist(df_train['fn'].dropna(), bins=20, range=(0, 1), alpha=0.5, label='FN')
     ax[0].axvline(optimal_threshold, color='red')
     ax[0].set_title('Train')
     ax[0].set_xlabel('Prediction')
     ax[0].set_ylabel('Counts')
     ax[0].set_xlim([0, 1])
     ax[0].legend(loc='upper right')
-    ax[1].hist(df_test['tp'].dropna(), bins=20, alpha=0.5, label='TP')
-    ax[1].hist(df_test['fp'].dropna(), bins=20, alpha=0.5, label='FP')
-    ax[1].hist(df_test['tn'].dropna(), bins=20, alpha=0.5, label='TN')
-    ax[1].hist(df_test['fn'].dropna(), bins=20, alpha=0.5, label='FN')
+    ax[1].hist(df_test['tp'].dropna(), bins=20, range=(0, 1), alpha=0.5, label='TP')
+    ax[1].hist(df_test['fp'].dropna(), bins=20, range=(0, 1), alpha=0.5, label='FP')
+    ax[1].hist(df_test['tn'].dropna(), bins=20, range=(0, 1), alpha=0.5, label='TN')
+    ax[1].hist(df_test['fn'].dropna(), bins=20, range=(0, 1), alpha=0.5, label='FN')
     ax[1].axvline(optimal_threshold_test, color='red')
     ax[1].set_title('Test')
     ax[1].set_xlabel('Prediction')

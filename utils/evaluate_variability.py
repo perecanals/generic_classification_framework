@@ -30,6 +30,7 @@ def evaluate_classification_model(preprocessed_data_list, summary_list, class_la
 
     optimal_threshold_list = []
 
+    accuracy_list = []
     weighted_precision_list = []
     weighted_recall_list = []
     weighted_f1_score_list = []
@@ -83,24 +84,38 @@ def evaluate_classification_model(preprocessed_data_list, summary_list, class_la
         pr_auc_test_list.append(pr_auc_test)
 
         # Compute optimal threshold depending on the criterion
-        # tpr_, fpr_, thresholds = roc_curve(y_test, summary["probs_test"])
+        fpr_, tpr_, thresholds_roc = roc_curve(y_test, summary["probs_test"])
+        precision_, recall_, thresholds_pr = precision_recall_curve(y_test, summary["probs_test"])
 
-        # if optimal_threshold_criterion == "youden":
-        #     # Compute optimal threshold by maximizing the Youden's index
-        #     optimal_threshold = thresholds[np.argmax(tpr_ - fpr_)]
-        #     y_test_pred = (summary["probs_test"] >= optimal_threshold).astype(int)
-        # elif optimal_threshold_criterion == "f1":
-        #     # Compute optimal threshold by maximizing the F1-score
-        #     optimal_threshold = thresholds[np.argmax(2 * tpr_ / (2 * tpr_ + fpr_))]
-        #     y_test_pred = (summary["probs_test"] >= optimal_threshold).astype(int)
-        # elif optimal_threshold_criterion == "f2":
-        #     # Compute optimal threshold by maximizing the F2-score
-        #     optimal_threshold = thresholds[np.argmax(5 * tpr_ / (5 * tpr_ + fpr_))]
-        #     y_test_pred = (summary["probs_test"] >= optimal_threshold).astype(int)
-        # elif optimal_threshold_criterion == "f05":
-        #     # Compute optimal threshold by maximizing the F0.5-score
-        #     optimal_threshold = thresholds[np.argmax(0.5 * tpr_ / (0.5 * tpr_ + fpr_))]
-        #     y_test_pred = (summary["probs_test"] >= optimal_threshold).astype(int)
+        if optimal_threshold_criterion == "youden":
+            # Compute optimal threshold by maximizing the Youden's index
+            youden_index = tpr_ - fpr_
+            optimal_threshold = thresholds_roc[np.argmax(youden_index)]
+            y_test_pred = (summary["probs_test"] > optimal_threshold).astype(int)
+        elif optimal_threshold_criterion == "f1":
+            # Compute optimal threshold by maximizing the F1-score
+            f1_scores_ = 2 * (precision_ * recall_) / (precision_ + recall_)
+            f1_scores_ = np.nan_to_num(f1_scores_)
+            optimal_threshold = thresholds_pr[np.argmax(f1_scores_)]
+            y_test_pred = (summary["probs_test"] > optimal_threshold).astype(int)
+        elif optimal_threshold_criterion == "f15":
+            # Compute optimal threshold by maximizing the F1.5-score
+            f15_scores_ = (1 + 1.5 ** 2) * (precision_ * recall_) / (1.5 ** 2 * precision_ + recall_)
+            f15_scores_ = np.nan_to_num(f15_scores_)
+            optimal_threshold = thresholds_pr[np.argmax(f15_scores_)]
+            y_test_pred = (summary["probs_test"] > optimal_threshold).astype(int)
+        elif optimal_threshold_criterion == "f2":
+            # Compute optimal threshold by maximizing the F2-score
+            f2_scores_ = (1 + 2 ** 2) * (precision_ * recall_) / (2 ** 2 * precision_ + recall_)
+            f2_scores_ = np.nan_to_num(f2_scores_)
+            optimal_threshold = thresholds_pr[np.argmax(f2_scores_)]
+            y_test_pred = (summary["probs_test"] > optimal_threshold).astype(int)
+        elif optimal_threshold_criterion == "f05":
+            # Compute optimal threshold by maximizing the F0.5-score
+            f05_scores_ = (1 + 0.5 ** 2) * (precision_ * recall_) / (0.5 ** 2 * precision_ + recall_)
+            f05_scores_ = np.nan_to_num(f05_scores_)
+            optimal_threshold = thresholds_pr[np.argmax(f05_scores_)]
+            y_test_pred = (summary["probs_test"] > optimal_threshold).astype(int)
 
         # Compute confusion matrix
         cm = confusion_matrix(y_test, y_test_pred)
@@ -109,6 +124,7 @@ def evaluate_classification_model(preprocessed_data_list, summary_list, class_la
 
         optimal_threshold_list.append(summary["optimal_threshold_test"])
 
+        accuracy_list.append(accuracy_score(y_test, y_test_pred))
         weighted_precision_list.append(precision_score(y_test, y_test_pred, average = "weighted"))
         weighted_recall_list.append(recall_score(y_test, y_test_pred, average = "weighted"))
         weighted_f1_score_list.append(f1_score(y_test, y_test_pred, average = "weighted"))
@@ -228,6 +244,7 @@ def evaluate_classification_model(preprocessed_data_list, summary_list, class_la
     precisions_lower_test = np.maximum(mean_precision_test - std_precision_test, 0)
 
     # Pass all nans/infs to 0
+    accuracy_list = np.nan_to_num(accuracy_list)
     weighted_precision_list = np.nan_to_num(weighted_precision_list)
     weighted_recall_list = np.nan_to_num(weighted_recall_list)
     weighted_f1_score_list = np.nan_to_num(weighted_f1_score_list)
@@ -244,6 +261,8 @@ def evaluate_classification_model(preprocessed_data_list, summary_list, class_la
     likelihood_ratio_list_plus = np.nan_to_num(likelihood_ratio_list_plus)
 
     # Compute mean and std of all metrics
+    mean_accuracy = np.mean(accuracy_list)
+    std_accuracy = np.std(accuracy_list)
     mean_weighted_precision = np.mean(weighted_precision_list)
     std_weighted_precision = np.std(weighted_precision_list)
     mean_weighted_recall = np.mean(weighted_recall_list)
@@ -276,7 +295,11 @@ def evaluate_classification_model(preprocessed_data_list, summary_list, class_la
     if verbose:
         print("\nTrain ROC AUC (95%CI): {:.2f} ({:.2f}-{:.2f})".format(np.mean(roc_auc_train_list), np.mean(roc_auc_train_list) - 1.96 * np.std(roc_auc_train_list) / np.sqrt(len(roc_auc_train_list)), np.mean(roc_auc_train_list) + 1.96 * np.std(roc_auc_train_list) / np.sqrt(len(roc_auc_train_list))))
         print("Test ROC AUC (95%CI): {:.2f} ({:.2f}-{:.2f})".format(np.mean(roc_auc_test_list), np.mean(roc_auc_test_list) - 1.96 * np.std(roc_auc_test_list) / np.sqrt(len(roc_auc_test_list)), np.mean(roc_auc_test_list) + 1.96 * np.std(roc_auc_test_list) / np.sqrt(len(roc_auc_test_list))))
+        print("Train PR AUC (95%CI): {:.2f} ({:.2f}-{:.2f})".format(np.mean(pr_auc_train_list), np.mean(pr_auc_train_list) - 1.96 * np.std(pr_auc_train_list) / np.sqrt(len(pr_auc_train_list)), np.mean(pr_auc_train_list) + 1.96 * np.std(pr_auc_train_list) / np.sqrt(len(pr_auc_train_list))))
+        print("Test PR AUC (95%CI): {:.2f} ({:.2f}-{:.2f})".format(np.mean(pr_auc_test_list), np.mean(pr_auc_test_list) - 1.96 * np.std(pr_auc_test_list) / np.sqrt(len(pr_auc_test_list)), np.mean(pr_auc_test_list) + 1.96 * np.std(pr_auc_test_list) / np.sqrt(len(pr_auc_test_list))))
+        print("Optimal threshold criterion: ", optimal_threshold_criterion)
         print("Optimal threshold: {:.2f} ({:.2f}-{:.2f})".format(np.mean(optimal_threshold_list), np.mean(optimal_threshold_list) - 1.96 * np.std(optimal_threshold_list) / np.sqrt(len(optimal_threshold_list)), np.mean(optimal_threshold_list) + 1.96 * np.std(optimal_threshold_list) / np.sqrt(len(optimal_threshold_list))))
+        print("Accuracy (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_accuracy, mean_accuracy - 1.96 * std_accuracy / np.sqrt(len(accuracy_list)), mean_accuracy + 1.96 * std_accuracy / np.sqrt(len(accuracy_list))))  
         print("Sensitivity (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_sensitivity, mean_sensitivity - 1.96 * std_sensitivity / np.sqrt(len(sensitivity_list)), mean_sensitivity + 1.96 * std_sensitivity / np.sqrt(len(sensitivity_list))))
         print("Specificity (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_specificity, mean_specificity - 1.96 * std_specificity / np.sqrt(len(specificity_list)), mean_specificity + 1.96 * std_specificity / np.sqrt(len(specificity_list))))
         print("F1-score (95%CI): {:.2f} ({:.2f}-{:.2f})".format(mean_f1_score, mean_f1_score - 1.96 * std_f1_score / np.sqrt(len(f1_score_list)), mean_f1_score + 1.96 * std_f1_score / np.sqrt(len(f1_score_list))))

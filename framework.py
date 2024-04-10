@@ -476,7 +476,8 @@ class GenericClassificationFramework():
                             make_plots: bool = True,
                             calibrate: bool = False,
                             regression: bool = False,
-                            verbose: bool = True):
+                            verbose: bool = True,
+                            optimal_threshold_criterion: str = "youden"):
         """
         Evaluates the classifier on the train and test data from the specified split. 
         It stores the results in the results attribute and in the output_dir if it is not None.
@@ -550,7 +551,8 @@ class GenericClassificationFramework():
                                              self.results[split],
                                              make_plots,
                                              self.output_dir + f"/folds/{split}/{self.model_name}",
-                                             verbose = verbose)
+                                             verbose = verbose,
+                                             optimal_threshold_criterion = optimal_threshold_criterion)
         
         with open(self.output_dir + f"/folds/{split}/{self.model_name}/results.pkl", "wb") as f:
             pickle.dump(self.results[split], f)
@@ -594,8 +596,14 @@ class GenericClassificationFramework():
                                         make_plots = make_plots,
                                         calibrate = calibrate,
                                         regression = regression,
-                                        verbose = verbose)
-        self.results_cv = evaluate_classification_model(self.preprocessed_data_list, list(self.results.values()), self.class_label, plot=False, verbose=False, optimal_threshold_criterion=optimal_threshold_criterion)
+                                        verbose = verbose,
+                                        optimal_threshold_criterion = optimal_threshold_criterion)
+        self.results_cv = evaluate_classification_model(self.preprocessed_data_list, 
+                                                        list(self.results.values()), 
+                                                        self.class_label, 
+                                                        plot=False, 
+                                                        verbose=False, 
+                                                        optimal_threshold_criterion=optimal_threshold_criterion)
 
     def assess_variability_cv(self, 
                               force: bool =False):
@@ -632,7 +640,7 @@ class GenericClassificationFramework():
                                                                "Test F1-score": ["mean", "std"],
                                                                "Test F1-score (train)": ["mean", "std"]})
 
-    def display_results(self):
+    def display_results(self, optimal_threshold_criterion: str = "youden"):
         """
         Method to display the variability results in a table and plot, as well as print several classification metrics.
         """
@@ -641,7 +649,8 @@ class GenericClassificationFramework():
                                       summary_list=list(self.results.values()), 
                                       class_label=self.class_label, 
                                       plot=True,
-                                      output_dir=self.output_dir + f"/aggregated_test_size{self.test_size}/{self.model_name}")
+                                      output_dir=self.output_dir + f"/aggregated_test_size{self.test_size}/{self.model_name}",
+                                      optimal_threshold_criterion=optimal_threshold_criterion)
 
     def perform_rfe(self, 
                     n_features_to_select: int = 10, 
